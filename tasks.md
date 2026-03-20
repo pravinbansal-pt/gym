@@ -9,55 +9,55 @@
 | ID | Task | Dependencies | Status | User Action? |
 |----|------|-------------|--------|--------------|
 | **SETUP** | | | | |
-| S1 | Initialize Next.js + TypeScript project | — | | |
-| S2 | Install & configure Tailwind CSS + ShadCN UI | S1 | | |
-| S3 | Install & configure Prisma ORM + PostgreSQL | S1 | | |
-| S4 | App shell — layout, sidebar navigation, theme provider | S2 | | |
-| S5 | Dark mode / theme toggle | S4 | | |
+| S1 | Initialize Next.js + TypeScript project | — | Done | |
+| S2 | Install & configure Tailwind CSS + ShadCN UI | S1 | Done | |
+| S3 | Install & configure Prisma ORM + PostgreSQL | S1 | Done | |
+| S4 | App shell — layout, sidebar navigation, theme provider | S2 | Done | |
+| S5 | Dark mode / theme toggle | S4 | Done | |
 | **DATABASE** | | | | |
-| D1 | Design complete database schema (all models) | S3 | | |
-| D2 | Create & run initial migrations | D1 | | |
-| D3 | Seed exercise library (muscle groups + common exercises) | D2 | | |
+| D1 | Design complete database schema (all models) | S3 | Done | |
+| D2 | Create & run initial migrations | D1 | Done | |
+| D3 | Seed exercise library (muscle groups + common exercises) | D2 | Done | |
 | **API LAYER** | | | | |
-| A1 | Exercise CRUD — server actions & API routes | D2 | | |
-| A2 | Program CRUD — server actions & API routes | D2 | | |
-| A3 | Workout CRUD — server actions & API routes | D2 | | |
-| A4 | Set & workout session log API | D2 | | |
-| A5 | Exercise notes API (create, pin, list) | D2 | | |
+| A1 | Exercise CRUD — server actions & API routes | D2 | Done | |
+| A2 | Program CRUD — server actions & API routes | D2 | Done | |
+| A3 | Workout CRUD — server actions & API routes | D2 | Done | |
+| A4 | Set & workout session log API | D2 | Done | |
+| A5 | Exercise notes API (create, pin, list) | D2 | Done | |
 | **EXERCISE LIBRARY** | | | | |
-| E1 | Exercise list page — muscle group & equipment filters, search | S4, A1 | | |
-| E2 | Exercise detail page — info, placeholder for history | E1 | | |
+| E1 | Exercise list page — muscle group & equipment filters, search | S4, A1 | Done | |
+| E2 | Exercise detail page — info, placeholder for history | E1 | Done | |
 | E3 | Google Imagen integration — generate exercise images | A1 | | **Yes** — API key |
-| E4 | Exercise history graphs & analytics per exercise | E2, A4 | | |
+| E4 | Exercise history graphs & analytics per exercise | E2, A4 | Done | |
 | **PROGRAMS** | | | | |
-| P1 | Program list page | S4, A2 | | |
-| P2 | Program create/edit page with defaults (rest time, set structure, warm-up %) | P1 | | |
-| P3 | Periodization support — phases, durations, cycling logic | P2 | | |
-| P4 | Simple program support — repeating day split | P2 | | |
+| P1 | Program list page | S4, A2 | Done | |
+| P2 | Program create/edit page with defaults (rest time, set structure, warm-up %) | P1 | Done | |
+| P3 | Periodization support — phases, durations, cycling logic | P2 | Done | |
+| P4 | Simple program support — repeating day split | P2 | Done | |
 | **WORKOUT PLANNING** | | | | |
-| W1 | Workout create/edit page | S4, A3, A1 | | |
-| W2 | Add exercises to workout — set count, warm-up/working sets config | W1 | | |
-| W3 | Workout detail view — full exercise list with set breakdown | W2 | | |
+| W1 | Workout create/edit page | S4, A3, A1 | Done | |
+| W2 | Add exercises to workout — set count, warm-up/working sets config | W1 | Done | |
+| W3 | Workout detail view — full exercise list with set breakdown | W2 | Done | |
 | **LIVE WORKOUT SESSION** | | | | |
-| L1 | Workout session page — timer display, exercise list | W3, A4 | | |
-| L2 | Set logging — weight & reps input with quick-entry UX | L1 | | |
-| L3 | Rest timer — countdown between sets with notification | L1 | | |
-| L4 | Auto-start session on first data entry | L2 | | |
-| L5 | Auto-end session after 30 min inactivity | L4 | | |
-| L6 | 1RM calculation engine & display | L2 | | |
+| L1 | Workout session page — timer display, exercise list | W3, A4 | Done | |
+| L2 | Set logging — weight & reps input with quick-entry UX | L1 | Done | |
+| L3 | Rest timer — countdown between sets with notification | L1 | Done | |
+| L4 | Auto-start session on first data entry | L2 | Done | |
+| L5 | Auto-end session after 30 min inactivity | L4 | Done | |
+| L6 | 1RM calculation engine & display | L2 | Done | |
 | **NOTES** | | | | |
-| N1 | Exercise notes UI — add note per exercise in workout | A5, L1 | | |
-| N2 | Pin notes — pinned notes displayed at top | N1 | | |
-| N3 | Notes history — view all past notes for an exercise | N1 | | |
+| N1 | Exercise notes UI — add note per exercise in workout | A5, L1 | Done | |
+| N2 | Pin notes — pinned notes displayed at top | N1 | Done | |
+| N3 | Notes history — view all past notes for an exercise | N1 | Done | |
 | **HISTORY & ANALYTICS** | | | | |
-| H1 | Workout history page — list & calendar view | S4, A4 | | |
-| H2 | Edit past workouts | H1 | | |
-| H3 | Personal records tracking & display | L6, H1 | | |
-| H4 | Progress charts — volume, strength trends over time | H1, E4 | | |
+| H1 | Workout history page — list & calendar view | S4, A4 | Done | |
+| H2 | Edit past workouts | H1 | Done | |
+| H3 | Personal records tracking & display | L6, H1 | Done | |
+| H4 | Progress charts — volume, strength trends over time | H1, E4 | Done | |
 | **AI FEATURES** | | | | |
-| AI1 | AI workout planning — generate workout from natural language prompt | W2 | | |
-| AI2 | CLI/API endpoint — add workouts & exercises via Claude Code | A3, A1 | | |
-| AI3 | AI exercise population — bulk-add exercises via AI | A1 | | |
+| AI1 | AI workout planning — generate workout from natural language prompt | W2 | Done | |
+| AI2 | CLI/API endpoint — add workouts & exercises via Claude Code | A3, A1 | Done | |
+| AI3 | AI exercise population — bulk-add exercises via AI | A1 | Done | |
 | **POLISH** | | | | |
 | PO1 | Dashboard / home page — upcoming workout, recent history, PRs | H1, P1 | | |
 | PO2 | Responsive design pass — mobile-friendly layouts | All UI | | |

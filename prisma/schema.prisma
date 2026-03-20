@@ -1,0 +1,214 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Exercise Library ───────────────────────────────────────────────
+
+model MuscleGroup {
+  id           String     @id @default(cuid())
+  name         String     @unique
+  displayOrder Int        @default(0)
+  exercises    Exercise[] @relation("PrimaryMuscle")
+  secondaryOf  Exercise[] @relation("SecondaryMuscles")
+}
+
+enum EquipmentType {
+  BARBELL
+  DUMBBELL
+  MACHINE
+  CABLE
+  BODYWEIGHT
+  SMITH_MACHINE
+  EZ_BAR
+  KETTLEBELL
+  RESISTANCE_BAND
+  OTHER
+}
+
+model Exercise {
+  id                    String                    @id @default(cuid())
+  name                  String                    @unique
+  description           String?
+  equipmentType         EquipmentType             @default(OTHER)
+  imageUrl              String?
+  primaryMuscleGroup    MuscleGroup               @relation("PrimaryMuscle", fields: [primaryMuscleGroupId], references: [id])
+  primaryMuscleGroupId  String
+  secondaryMuscleGroups MuscleGroup[]             @relation("SecondaryMuscles")
+  programExercises      ProgramWorkoutExercise[]
+  sessionExercises      WorkoutSessionExercise[]
+  notes                 ExerciseNote[]
+  personalRecords       PersonalRecord[]
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+
+  @@index([primaryMuscleGroupId])
+}
+
+// ─── Programs ───────────────────────────────────────────────────────
+
+enum ProgramType {
+  PERIODIZED
+  SIMPLE
+}
+
+model Program {
+  id                     String           @id @default(cuid())
+  name                   String
+  description            String?
+  type                   ProgramType      @default(SIMPLE)
+  defaultRestSeconds     Int              @default(90)
+  defaultWarmUpSets      Int              @default(1)
+  defaultWorkingSets     Int              @default(3)
+  defaultWarmUpPercent   Float            @default(0.6)
+  isActive               Boolean          @default(false)
+  phases                 ProgramPhase[]
+  workouts               ProgramWorkout[]
+  sessions               WorkoutSession[]
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+}
+
+model ProgramPhase {
+  id            String           @id @default(cuid())
+  program       Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
+  programId     String
+  name          String
+  description   String?
+  orderIndex    Int
+  durationWeeks Int              @default(4)
+  workouts      ProgramWorkout[]
+
+  @@index([programId])
+}
+
+model ProgramWorkout {
+  id         String                   @id @default(cuid())
+  program    Program                  @relation(fields: [programId], references: [id], onDelete: Cascade)
+  programId  String
+  phase      ProgramPhase?            @relation(fields: [phaseId], references: [id], onDelete: SetNull)
+  phaseId    String?
+  name       String
+  dayIndex   Int
+  orderIndex Int
+  exercises  ProgramWorkoutExercise[]
+  sessions   WorkoutSession[]
+
+  @@index([programId])
+  @@index([phaseId])
+}
+
+model ProgramWorkoutExercise {
+  id               String         @id @default(cuid())
+  programWorkout   ProgramWorkout @relation(fields: [programWorkoutId], references: [id], onDelete: Cascade)
+  programWorkoutId String
+  exercise         Exercise       @relation(fields: [exerciseId], references: [id])
+  exerciseId       String
+  orderIndex       Int
+  warmUpSets       Int?
+  workingSets      Int?
+  warmUpPercent    Float?
+  targetReps       String?
+  restSeconds      Int?
+
+  @@index([programWorkoutId])
+  @@index([exerciseId])
+}
+
+// ─── Workout Sessions ───────────────────────────────────────────────
+
+enum SessionStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+}
+
+model WorkoutSession {
+  id               String                   @id @default(cuid())
+  name             String?
+  program          Program?                 @relation(fields: [programId], references: [id], onDelete: SetNull)
+  programId        String?
+  programWorkout   ProgramWorkout?          @relation(fields: [programWorkoutId], references: [id], onDelete: SetNull)
+  programWorkoutId String?
+  status           SessionStatus            @default(PLANNED)
+  startedAt        DateTime?
+  endedAt          DateTime?
+  notes            String?
+  exercises        WorkoutSessionExercise[]
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+
+  @@index([programId])
+  @@index([programWorkoutId])
+  @@index([startedAt])
+  @@index([status])
+}
+
+model WorkoutSessionExercise {
+  id               String          @id @default(cuid())
+  workoutSession   WorkoutSession  @relation(fields: [workoutSessionId], references: [id], onDelete: Cascade)
+  workoutSessionId String
+  exercise         Exercise        @relation(fields: [exerciseId], references: [id])
+  exerciseId       String
+  orderIndex       Int
+  sets             WorkoutSet[]
+  notes            ExerciseNote[]
+
+  @@index([workoutSessionId])
+  @@index([exerciseId])
+}
+
+enum SetType {
+  WARM_UP
+  WORKING
+}
+
+model WorkoutSet {
+  id                       String                 @id @default(cuid())
+  sessionExercise          WorkoutSessionExercise @relation(fields: [sessionExerciseId], references: [id], onDelete: Cascade)
+  sessionExerciseId        String
+  setType                  SetType                @default(WORKING)
+  weight                   Float?
+  reps                     Int?
+  orderIndex               Int
+  completedAt              DateTime?
+
+  @@index([sessionExerciseId])
+}
+
+// ─── Notes ──────────────────────────────────────────────────────────
+
+model ExerciseNote {
+  id                       String                  @id @default(cuid())
+  exercise                 Exercise                @relation(fields: [exerciseId], references: [id])
+  exerciseId               String
+  sessionExercise          WorkoutSessionExercise? @relation(fields: [sessionExerciseId], references: [id], onDelete: SetNull)
+  sessionExerciseId        String?
+  content                  String
+  isPinned                 Boolean                 @default(false)
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
+
+  @@index([exerciseId])
+  @@index([sessionExerciseId])
+}
+
+// ─── Personal Records ───────────────────────────────────────────────
+
+model PersonalRecord {
+  id               String          @id @default(cuid())
+  exercise         Exercise        @relation(fields: [exerciseId], references: [id])
+  exerciseId       String
+  weight           Float
+  reps             Int
+  estimated1RM     Float
+  achievedAt       DateTime        @default(now())
+  workoutSessionId String?
+
+  @@index([exerciseId])
+  @@index([achievedAt])
+}

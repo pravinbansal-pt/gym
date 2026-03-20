@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Session — Mobile Layout Options</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #f5f5f5; color: #111; }
+
+  .page { max-width: 420px; margin: 0 auto; background: #fff; min-height: 100vh; }
+
+  h2.section-label {
+    background: #111; color: #fff; text-align: center;
+    padding: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 2px;
+  }
+
+  /* ─── OPTION A: Ultra-compact inline header ─── */
+  .header-a {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px;
+    border-bottom: 1px solid #e5e5e5;
+    background: #fafafa;
+  }
+  .header-a .title { font-weight: 700; font-size: 16px; }
+  .header-a .meta { font-size: 11px; color: #888; }
+  .header-a .right { display: flex; align-items: center; gap: 8px; }
+  .header-a .timer {
+    font-family: 'SF Mono', monospace; font-size: 14px; font-weight: 600;
+    background: #f0f0f0; padding: 4px 8px; border-radius: 6px;
+  }
+  .btn-finish {
+    background: #111; color: #fff; border: none; border-radius: 6px;
+    padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+
+  /* ─── Exercise card — compact ─── */
+  .exercise-card {
+    margin: 6px 8px;
+    border: 1px solid #e8e8e8;
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .exercise-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 10px;
+    cursor: pointer;
+  }
+  .exercise-header .left { display: flex; align-items: center; gap: 8px; }
+  .exercise-header .num {
+    width: 22px; height: 22px; border-radius: 6px; background: #f0f0f0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; color: #666;
+  }
+  .exercise-header .name { font-weight: 600; font-size: 14px; }
+  .exercise-header .badge {
+    font-size: 10px; background: #f0f0f0; padding: 2px 6px; border-radius: 4px; color: #666;
+  }
+  .exercise-header .sets-count { font-size: 11px; color: #999; }
+
+  /* ─── OPTION A: Stacked rows — weight on top, reps below ─── */
+  .sets-a .set-row {
+    display: grid;
+    grid-template-columns: 28px 1fr 1fr 36px;
+    align-items: center;
+    padding: 0 10px;
+    gap: 4px;
+    border-top: 1px solid #f0f0f0;
+    min-height: 44px;
+  }
+  .sets-a .set-row.completed { background: #f0fdf0; }
+  .sets-a .set-row.warmup { background: #fffbf0; }
+
+  .set-num {
+    font-size: 13px; font-weight: 600; color: #999;
+    display: flex; align-items: center; gap: 3px;
+  }
+  .dot { width: 5px; height: 5px; border-radius: 50%; }
+  .dot.warmup { background: #f59e0b; }
+  .dot.working { background: #3b82f6; }
+
+  .input-group {
+    display: flex; align-items: center; gap: 2px;
+  }
+  .input-group label { font-size: 9px; color: #aaa; text-transform: uppercase; letter-spacing: 0.5px; width: 20px; }
+  .input-group .adj-btn {
+    width: 28px; height: 32px; border: none; background: none;
+    font-size: 16px; color: #999; cursor: pointer; display: flex;
+    align-items: center; justify-content: center; border-radius: 4px;
+    touch-action: manipulation;
+  }
+  .input-group .adj-btn:active { background: #f0f0f0; }
+  .input-group input {
+    width: 48px; height: 32px; border: 1px solid #e5e5e5; border-radius: 6px;
+    text-align: center; font-size: 14px; font-weight: 600;
+    font-family: 'SF Mono', monospace;
+    -webkit-appearance: none;
+  }
+  .input-group input:focus { outline: none; border-color: #111; }
+
+  .check-btn {
+    width: 34px; height: 34px; border: 1.5px solid #ddd; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; background: #fff; touch-action: manipulation;
+  }
+  .check-btn.done { background: #22c55e; border-color: #22c55e; color: #fff; }
+  .check-btn svg { width: 16px; height: 16px; }
+
+  .set-actions { padding: 6px 10px; display: flex; gap: 6px; border-top: 1px solid #f0f0f0; }
+  .set-actions button {
+    font-size: 12px; padding: 4px 10px; border: 1px solid #e5e5e5;
+    border-radius: 6px; background: #fff; cursor: pointer; color: #666;
+  }
+
+  /* ─── OPTION B: Super-dense grid — everything visible ─── */
+  .sets-b .grid-header {
+    display: grid;
+    grid-template-columns: 22px 1fr 1fr 30px;
+    padding: 4px 10px;
+    font-size: 10px; color: #999; text-transform: uppercase; letter-spacing: 0.5px;
+    border-top: 1px solid #f0f0f0;
+  }
+  .sets-b .set-row {
+    display: grid;
+    grid-template-columns: 22px 1fr 1fr 30px;
+    align-items: center;
+    padding: 3px 10px;
+    gap: 4px;
+    border-top: 1px solid #f5f5f5;
+    min-height: 40px;
+  }
+  .sets-b .set-row.completed { background: #f0fdf0; }
+  .sets-b .set-row.warmup { background: #fffbf0; }
+
+  .compact-input {
+    display: flex; align-items: center; background: #f8f8f8; border-radius: 6px; overflow: hidden;
+    border: 1px solid #eee;
+  }
+  .compact-input button {
+    width: 26px; height: 30px; border: none; background: none;
+    font-size: 14px; color: #999; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    touch-action: manipulation;
+  }
+  .compact-input button:active { background: #e8e8e8; }
+  .compact-input input {
+    width: 40px; height: 30px; border: none; background: transparent;
+    text-align: center; font-size: 13px; font-weight: 600;
+    font-family: 'SF Mono', monospace; -webkit-appearance: none;
+  }
+  .compact-input input:focus { outline: none; }
+
+  .mini-check {
+    width: 28px; height: 28px; border: 1.5px solid #ddd; border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; background: #fff; touch-action: manipulation;
+  }
+  .mini-check.done { background: #22c55e; border-color: #22c55e; color: #fff; }
+  .mini-check svg { width: 14px; height: 14px; }
+
+  /* ─── OPTION C: Card-per-set — swipeable feel ─── */
+  .sets-c .set-card {
+    margin: 4px 10px;
+    border: 1px solid #eee;
+    border-radius: 10px;
+    padding: 8px 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 48px;
+  }
+  .sets-c .set-card.completed { background: #f0fdf0; border-color: #bbf7d0; }
+  .sets-c .set-card.warmup { border-left: 3px solid #f59e0b; }
+  .sets-c .set-card.work { border-left: 3px solid #3b82f6; }
+
+  .set-card .set-label {
+    font-size: 11px; font-weight: 700; color: #999; min-width: 14px; text-align: center;
+  }
+  .set-card .fields { flex: 1; display: flex; gap: 6px; }
+  .set-card .field {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 1px;
+  }
+  .set-card .field-label { font-size: 9px; color: #bbb; text-transform: uppercase; }
+  .set-card .field-input {
+    display: flex; align-items: center; background: #f5f5f5; border-radius: 8px;
+    overflow: hidden; width: 100%;
+  }
+  .set-card .field-input button {
+    width: 30px; height: 34px; border: none; background: none;
+    font-size: 15px; color: #999; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    touch-action: manipulation;
+  }
+  .set-card .field-input button:active { background: #e8e8e8; }
+  .set-card .field-input input {
+    flex: 1; min-width: 0; height: 34px; border: none; background: transparent;
+    text-align: center; font-size: 15px; font-weight: 700;
+    font-family: 'SF Mono', monospace; -webkit-appearance: none;
+  }
+  .set-card .field-input input:focus { outline: none; }
+
+  /* ─── Rest timer — compact ─── */
+  .rest-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 12px;
+    background: #f0f7ff;
+    border-bottom: 1px solid #dbeafe;
+  }
+  .rest-bar .rest-left { display: flex; align-items: center; gap: 8px; }
+  .rest-bar .rest-label { font-size: 11px; color: #6b7280; font-weight: 500; }
+  .rest-bar .rest-time { font-family: 'SF Mono', monospace; font-size: 20px; font-weight: 700; color: #2563eb; }
+  .rest-bar .rest-btns { display: flex; gap: 4px; }
+  .rest-bar .rest-btns button {
+    padding: 4px 8px; font-size: 11px; border: 1px solid #dbeafe;
+    border-radius: 4px; background: #fff; cursor: pointer; color: #2563eb;
+  }
+
+  .spacer { height: 20px; }
+
+  /* ─── Comparison labels ─── */
+  .option-label {
+    padding: 10px 12px 4px;
+    font-size: 11px; font-weight: 700; color: #666;
+    text-transform: uppercase; letter-spacing: 1px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .option-label .tag {
+    background: #dbeafe; color: #2563eb; padding: 2px 6px; border-radius: 4px;
+    font-size: 9px;
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+<!-- ════════════════════════════════════════════ -->
+<h2 class="section-label">Option A — Inline Inputs, No Card Borders</h2>
+<!-- ════════════════════════════════════════════ -->
+
+<div class="header-a">
+  <div>
+    <div class="title">Legs A</div>
+    <div class="meta">1/16 sets &middot; 160 kg</div>
+  </div>
+  <div class="right">
+    <div class="timer">03:39</div>
+    <button class="btn-finish">Finish</button>
+  </div>
+</div>
+
+<div class="rest-bar">
+  <div class="rest-left">
+    <span class="rest-label">Rest</span>
+    <span class="rest-time">1:42</span>
+  </div>
+  <div class="rest-btns">
+    <button>-30s</button>
+    <button>+30s</button>
+    <button>Skip</button>
+  </div>
+</div>
+
+<div class="exercise-card">
+  <div class="exercise-header">
+    <div class="left">
+      <div class="num">1</div>
+      <div>
+        <div class="name">Hack Squat</div>
+        <div style="display:flex;gap:4px;align-items:center;margin-top:1px;">
+          <span class="badge">Quads</span>
+          <span class="sets-count">1/4 sets</span>
+        </div>
+      </div>
+    </div>
+    <svg width="16" height="16" fill="none" stroke="#999" stroke-width="2"><path d="M4 10l4-4 4 4"/></svg>
+  </div>
+
+  <div class="sets-a">
+    <div class="set-row completed warmup">
+      <div class="set-num"><span class="dot warmup"></span>1</div>
+      <div class="input-group">
+        <button class="adj-btn">-</button>
+        <input type="text" value="20">
+        <button class="adj-btn">+</button>
+      </div>
+      <div class="input-group">
+        <button class="adj-btn">-</button>
+        <input type="text" value="8">
+        <button class="adj-btn">+</button>
+      </div>
+      <div class="check-btn done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></div>
+    </div>
+    <div class="set-row">
+      <div class="set-num"><span class="dot working"></span>2</div>
+      <div class="input-group">
+        <button class="adj-btn">-</button>
+        <input type="text" value="0">
+        <button class="adj-btn">+</button>
+      </div>
+      <div class="input-group">
+        <button class="adj-btn">-</button>
+        <input type="text" value="0">
+        <button class="adj-btn">+</button>
+      </div>
+      <div class="check-btn"><svg viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></div>
+    </div>
+    <div class="set-row">
+      <div class="set-num"><span class="dot working"></span>3</div>
+      <div class="input-group">
+        <button class="adj-btn">-</button>
+        <input type="text" value="0">
+        <button class="adj-btn">+</button>
+      </div>
+      <div class="input-group">
+        <button class="adj-btn">-</button>
+        <input type="text" value="0">
+        <button class="adj-btn">+</button>
+      </div>
+      <div class="check-btn"><svg viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></div>
+    </div>
+    <div class="set-row">
+      <div class="set-num"><span class="dot working"></span>4</div>
+      <div class="input-group">
+        <button class="adj-btn">-</button>
+        <input type="text" value="0">
+        <button class="adj-btn">+</button>
+      </div>
+      <div class="input-group">
+        <button class="adj-btn">-</button>
+        <input type="text" value="0">
+        <button class="adj-btn">+</button>
+      </div>
+      <div class="check-btn"><svg viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></div>
+    </div>
+    <div class="set-actions">
+      <button>+ Add Set</button>
+      <button>+ Note</button>
+    </div>
+  </div>
+</div>
+
+<div class="exercise-card">
+  <div class="exercise-header">
+    <div class="left">
+      <div class="num">2</div>
+      <div>
+        <div class="name">Leg Extension</div>
+        <div style="display:flex;gap:4px;align-items:center;margin-top:1px;">
+          <span class="badge">Quads</span>
+          <span class="sets-count">0/3 sets</span>
+        </div>
+      </div>
+    </div>
+    <svg width="16" height="16" fill="none" stroke="#999" stroke-width="2"><path d="M4 6l4 4 4-4"/></svg>
+  </div>
+</div>
+
+<div class="exercise-card">
+  <div class="exercise-header">
+    <div class="left">
+      <div class="num">3</div>
+      <div>
+        <div class="name">Romanian Deadlift</div>
+        <div style="display:flex;gap:4px;align-items:center;margin-top:1px;">
+          <span class="badge">Hamstrings</span>
+          <span class="sets-count">0/4 sets</span>
+        </div>
+      </div>
+    </div>
+    <svg width="16" height="16" fill="none" stroke="#999" stroke-width="2"><path d="M4 6l4 4 4-4"/></svg>
+  </div>
+</div>
+
+
+<div class="spacer"></div>
+
+<!-- ════════════════════════════════════════════ -->
+<h2 class="section-label">Option B — Super-dense Grid</h2>
+<!-- ════════════════════════════════════════════ -->
+
+<div class="header-a">
+  <div>
+    <div class="title">Legs A</div>
+    <div class="meta">1/16 sets &middot; 160 kg</div>
+  </div>
+  <div class="right">
+    <div class="timer">03:39</div>
+    <button class="btn-finish">Finish</button>
+  </div>
+</div>
+
+<div class="exercise-card">
+  <div class="exercise-header">
+    <div class="left">
+      <div class="num">1</div>
+      <div>
+        <div class="name">Hack Squat</div>
+        <div style="display:flex;gap:4px;align-items:center;margin-top:1px;">
+          <span class="badge">Quads</span>
+          <span class="sets-count">1/4 sets</span>
+        </div>
+      </div>
+    </div>
+    <svg width="16" height="16" fill="none" stroke="#999" stroke-width="2"><path d="M4 10l4-4 4 4"/></svg>
+  </div>
+
+  <div class="sets-b">
+    <div class="grid-header">
+      <div></div>
+      <div>Weight (kg)</div>
+      <div>Reps</div>
+      <div></div>
+    </div>
+
+    <div class="set-row completed warmup">
+      <div class="set-num"><span class="dot warmup"></span>1</div>
+      <div class="compact-input">
+        <button>-</button>
+        <input type="text" value="20">
+        <button>+</button>
+      </div>
+      <div class="compact-input">
+        <button>-</button>
+        <input type="text" value="8">
+        <button>+</button>
+      </div>
+      <div class="mini-check done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></div>
+    </div>
+    <div class="set-row">
+      <div class="set-num"><span class="dot working"></span>2</div>
+      <div class="compact-input">
+        <button>-</button>
+        <input type="text" value="0">
+        <button>+</button>
+      </div>
+      <div class="compact-input">
+        <button>-</button>
+        <input type="text" value="0">
+        <button>+</button>
+      </div>
+      <div class="mini-check"><svg viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></div>
+    </div>
+    <div class="set-row">
+      <div class="set-num"><span class="dot working"></span>3</div>
+      <div class="compact-input">
+        <button>-</button>
+        <input type="text" value="0">
+        <button>+</button>
+      </div>
+      <div class="compact-input">
+        <button>-</button>
+        <input type="text" value="0">
+        <button>+</button>
+      </div>
+      <div class="mini-check"><svg viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></div>
+    </div>
+    <div class="set-row">
+      <div class="set-num"><span class="dot working"></span>4</div>
+      <div class="compact-input">
+        <button>-</button>
+        <input type="text" value="0">
+        <button>+</button>
+      </div>
+      <div class="compact-input">
+        <button>-</button>
+        <input type="text" value="0">
+        <button>+</button>
+      </div>
+      <div class="mini-check"><svg viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></div>
+    </div>
+    <div class="set-actions">
+      <button>+ Add Set</button>
+      <button>+ Note</button>
+    </div>
+  </div>
+</div>
+
+<div class="exercise-card">
+  <div class="exercise-header">
+    <div class="left">
+      <div class="num">2</div>
+      <div>
+        <div class="name">Leg Extension</div>
+        <div style="display:flex;gap:4px;align-items:center;margin-top:1px;">
+          <span class="badge">Quads</span>
+          <span class="sets-count">0/3 sets</span>
+        </div>
+      </div>
+    </div>
+    <svg width="16" height="16" fill="none" stroke="#999" stroke-width="2"><path d="M4 6l4 4 4-4"/></svg>
+  </div>
+</div>
+
+<div class="exercise-card">
+  <div class="exercise-header">
+    <div class="left">
+      <div class="num">3</div>
+      <div>
+        <div class="name">Romanian Deadlift</div>
+        <div style="display:flex;gap:4px;align-items:center;margin-top:1px;">
+          <span class="badge">Hamstrings</span>
+          <span class="sets-count">0/4 sets</span>
+        </div>
+      </div>
+    </div>
+    <svg width="16" height="16" fill="none" stroke="#999" stroke-width="2"><path d="M4 6l4 4 4-4"/></svg>
+  </div>
+</div>
+
+
+<div class="spacer"></div>
+
+<!-- ════════════════════════════════════════════ -->
+<h2 class="section-label">Option C — Card-Per-Set with Labels</h2>
+<!-- ════════════════════════════════════════════ -->
+
+<div class="header-a">
+  <div>
+    <div class="title">Legs A</div>
+    <div class="meta">1/16 sets &middot; 160 kg</div>
+  </div>
+  <div class="right">
+    <div class="timer">03:39</div>
+    <button class="btn-finish">Finish</button>
+  </div>
+</div>
+
+<div class="exercise-card">
+  <div class="exercise-header">
+    <div class="left">
+      <div class="num">1</div>
+      <div>
+        <div class="name">Hack Squat</div>
+        <div style="display:flex;gap:4px;align-items:center;margin-top:1px;">
+          <span class="badge">Quads</span>
+          <span class="sets-count">1/4 sets</span>
+        </div>
+      </div>
+    </div>
+    <svg width="16" height="16" fill="none" stroke="#999" stroke-width="2"><path d="M4 10l4-4 4 4"/></svg>
+  </div>
+
+  <div class="sets-c">
+    <div class="set-card completed warmup">
+      <div class="set-label">1</div>
+      <div class="fields">
+        <div class="field">
+          <span class="field-label">Weight</span>
+          <div class="field-input">
+            <button>-</button>
+            <input type="text" value="20">
+            <button>+</button>
+          </div>
+        </div>
+        <div class="field">
+          <span class="field-label">Reps</span>
+          <div class="field-input">
+            <button>-</button>
+            <input type="text" value="8">
+            <button>+</button>
+          </div>
+        </div>
+      </div>
+      <div class="check-btn done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></div>
+    </div>
+
+    <div class="set-card work">
+      <div class="set-label">2</div>
+      <div class="fields">
+        <div class="field">
+          <span class="field-label">Weight</span>
+          <div class="field-input">
+            <button>-</button>
+            <input type="text" value="0">
+            <button>+</button>
+          </div>
+        </div>
+        <div class="field">
+          <span class="field-label">Reps</span>
+          <div class="field-input">
+            <button>-</button>
+            <input type="text" value="0">
+            <button>+</button>
+          </div>
+        </div>
+      </div>
+      <div class="check-btn"><svg viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></div>
+    </div>
+
+    <div class="set-card work">
+      <div class="set-label">3</div>
+      <div class="fields">
+        <div class="field">
+          <span class="field-label">Weight</span>
+          <div class="field-input">
+            <button>-</button>
+            <input type="text" value="0">
+            <button>+</button>
+          </div>
+        </div>
+        <div class="field">
+          <span class="field-label">Reps</span>
+          <div class="field-input">
+            <button>-</button>
+            <input type="text" value="0">
+            <button>+</button>
+          </div>
+        </div>
+      </div>
+      <div class="check-btn"><svg viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></div>
+    </div>
+
+    <div class="set-card work">
+      <div class="set-label">4</div>
+      <div class="fields">
+        <div class="field">
+          <span class="field-label">Weight</span>
+          <div class="field-input">
+            <button>-</button>
+            <input type="text" value="0">
+            <button>+</button>
+          </div>
+        </div>
+        <div class="field">
+          <span class="field-label">Reps</span>
+          <div class="field-input">
+            <button>-</button>
+            <input type="text" value="0">
+            <button>+</button>
+          </div>
+        </div>
+      </div>
+      <div class="check-btn"><svg viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></div>
+    </div>
+
+    <div class="set-actions">
+      <button>+ Add Set</button>
+      <button>+ Note</button>
+    </div>
+  </div>
+</div>
+
+<div class="exercise-card">
+  <div class="exercise-header">
+    <div class="left">
+      <div class="num">2</div>
+      <div>
+        <div class="name">Leg Extension</div>
+        <div style="display:flex;gap:4px;align-items:center;margin-top:1px;">
+          <span class="badge">Quads</span>
+          <span class="sets-count">0/3 sets</span>
+        </div>
+      </div>
+    </div>
+    <svg width="16" height="16" fill="none" stroke="#999" stroke-width="2"><path d="M4 6l4 4 4-4"/></svg>
+  </div>
+</div>
+
+<div class="spacer"></div>
+<div class="spacer"></div>
+
+</div>
+</body>
+</html>
