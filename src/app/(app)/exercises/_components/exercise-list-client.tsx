@@ -1,15 +1,14 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useState, useTransition } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Dumbbell,
   Plus,
   Search,
   X,
-  Loader2,
-  Sparkles,
+  LayoutGrid,
+  List,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,8 +26,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { AddExerciseDialog } from "./add-exercise-dialog";
-import { AIPopulateDialog } from "./ai-populate-dialog";
 
 const EQUIPMENT_OPTIONS = [
   { value: "BARBELL", label: "Barbell" },
@@ -69,50 +75,40 @@ interface MuscleGroup {
 interface ExerciseListClientProps {
   exercises: Exercise[];
   muscleGroups: MuscleGroup[];
-  filters: {
-    search?: string;
-    muscleGroup?: string;
-    equipment?: string;
-  };
 }
 
 export function ExerciseListClient({
   exercises,
   muscleGroups,
-  filters,
 }: ExerciseListClientProps) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const [isPending, startTransition] = useTransition();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [aiDialogOpen, setAiDialogOpen] = useState(false);
-  const [searchValue, setSearchValue] = useState(filters.search ?? "");
+  const [searchValue, setSearchValue] = useState("");
+  const [muscleGroupFilter, setMuscleGroupFilter] = useState("");
+  const [equipmentFilter, setEquipmentFilter] = useState("");
+  const [view, setView] = useState<"grid" | "table">("grid");
 
-  const updateFilters = useCallback(
-    (updates: Record<string, string | undefined>) => {
-      const params = new URLSearchParams(searchParams.toString());
-      for (const [key, value] of Object.entries(updates)) {
-        if (value) {
-          params.set(key, value);
-        } else {
-          params.delete(key);
-        }
-      }
-      startTransition(() => {
-        router.push(`/exercises?${params.toString()}`);
-      });
-    },
-    [router, searchParams, startTransition]
-  );
+  const filteredExercises = useMemo(() => {
+    let result = exercises;
+    if (searchValue) {
+      const q = searchValue.toLowerCase();
+      result = result.filter((e) => e.name.toLowerCase().includes(q));
+    }
+    if (muscleGroupFilter) {
+      result = result.filter((e) => e.primaryMuscleGroup.id === muscleGroupFilter);
+    }
+    if (equipmentFilter) {
+      result = result.filter((e) => e.equipmentType === equipmentFilter);
+    }
+    return result;
+  }, [exercises, searchValue, muscleGroupFilter, equipmentFilter]);
 
-  const clearFilters = useCallback(() => {
+  const clearFilters = () => {
     setSearchValue("");
-    startTransition(() => {
-      router.push("/exercises");
-    });
-  }, [router, startTransition]);
+    setMuscleGroupFilter("");
+    setEquipmentFilter("");
+  };
 
-  const hasFilters = filters.search || filters.muscleGroup || filters.equipment;
+  const hasFilters = searchValue || muscleGroupFilter || equipmentFilter;
 
   return (
     <div className="space-y-6">
@@ -125,10 +121,6 @@ export function ExerciseListClient({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => setAiDialogOpen(true)}>
-            <Sparkles className="size-4" data-icon="inline-start" />
-            AI Populate
-          </Button>
           <Button onClick={() => setDialogOpen(true)}>
             <Plus className="size-4" data-icon="inline-start" />
             Add Exercise
@@ -143,28 +135,14 @@ export function ExerciseListClient({
           <Input
             placeholder="Search exercises..."
             value={searchValue}
-            onChange={(e) => {
-              setSearchValue(e.target.value);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                updateFilters({ search: searchValue || undefined });
-              }
-            }}
-            onBlur={() => {
-              if (searchValue !== (filters.search ?? "")) {
-                updateFilters({ search: searchValue || undefined });
-              }
-            }}
+            onChange={(e) => setSearchValue(e.target.value)}
             className="pl-8"
           />
         </div>
 
         <Select
-          value={filters.muscleGroup ?? ""}
-          onValueChange={(val) =>
-            updateFilters({ muscleGroup: val || undefined })
-          }
+          value={muscleGroupFilter}
+          onValueChange={(val) => setMuscleGroupFilter(val ?? "")}
         >
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Muscle Group" />
@@ -180,10 +158,8 @@ export function ExerciseListClient({
         </Select>
 
         <Select
-          value={filters.equipment ?? ""}
-          onValueChange={(val) =>
-            updateFilters({ equipment: val || undefined })
-          }
+          value={equipmentFilter}
+          onValueChange={(val) => setEquipmentFilter(val ?? "")}
         >
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Equipment" />
@@ -205,13 +181,30 @@ export function ExerciseListClient({
           </Button>
         )}
 
-        {isPending && (
-          <Loader2 className="size-4 animate-spin text-muted-foreground" />
-        )}
+        <div className="ml-auto flex items-center gap-1 rounded-lg border p-0.5">
+          <Button
+            variant={view === "grid" ? "secondary" : "ghost"}
+            size="icon"
+            className="size-8"
+            onClick={() => setView("grid")}
+            aria-label="Grid view"
+          >
+            <LayoutGrid className="size-4" />
+          </Button>
+          <Button
+            variant={view === "table" ? "secondary" : "ghost"}
+            size="icon"
+            className="size-8"
+            onClick={() => setView("table")}
+            aria-label="Table view"
+          >
+            <List className="size-4" />
+          </Button>
+        </div>
       </div>
 
-      {/* Exercise Grid */}
-      {exercises.length === 0 ? (
+      {/* Exercise List */}
+      {filteredExercises.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16">
           <Dumbbell className="size-12 text-muted-foreground/50" />
           <h3 className="mt-4 text-lg font-medium">No exercises found</h3>
@@ -230,18 +223,26 @@ export function ExerciseListClient({
             </Button>
           )}
         </div>
-      ) : (
+      ) : view === "grid" ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {exercises.map((exercise) => (
+          {filteredExercises.map((exercise) => (
             <Link
               key={exercise.id}
               href={`/exercises/${exercise.id}`}
               className="group"
             >
               <Card className="h-full transition-colors hover:bg-muted/50">
-                {/* Image Placeholder */}
-                <div className="mx-4 flex aspect-[4/3] items-center justify-center rounded-lg bg-muted">
-                  <Dumbbell className="size-10 text-muted-foreground/40" />
+                <div className="mx-4 flex aspect-video items-center justify-center overflow-hidden rounded-lg bg-white">
+                  {exercise.imageUrl ? (
+                    <img
+                      src={exercise.imageUrl}
+                      alt={exercise.name}
+                      className="max-h-full max-w-full object-contain"
+                      suppressHydrationWarning
+                    />
+                  ) : (
+                    <Dumbbell className="size-10 text-muted-foreground/40" />
+                  )}
                 </div>
                 <CardHeader className="pb-0">
                   <CardTitle className="line-clamp-1 group-hover:text-primary transition-colors">
@@ -262,20 +263,63 @@ export function ExerciseListClient({
             </Link>
           ))}
         </div>
+      ) : (
+        <div className="rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-12 hidden sm:table-cell" />
+                <TableHead>Name</TableHead>
+                <TableHead>Muscle Group</TableHead>
+                <TableHead className="hidden sm:table-cell">Equipment</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredExercises.map((exercise) => (
+                <TableRow key={exercise.id} className="group">
+                  <TableCell className="hidden sm:table-cell">
+                    <div className="flex size-10 items-center justify-center overflow-hidden rounded-md bg-muted">
+                      {exercise.imageUrl ? (
+                        <img
+                          src={exercise.imageUrl}
+                          alt={exercise.name}
+                          className="max-h-full max-w-full object-contain"
+                          suppressHydrationWarning
+                        />
+                      ) : (
+                        <Dumbbell className="size-4 text-muted-foreground/40" />
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Link
+                      href={`/exercises/${exercise.id}`}
+                      className="font-medium hover:text-primary transition-colors"
+                    >
+                      {exercise.name}
+                    </Link>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="secondary">
+                      {exercise.primaryMuscleGroup.name}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="hidden sm:table-cell">
+                    <Badge variant="outline">
+                      {formatEquipment(exercise.equipmentType)}
+                    </Badge>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       )}
 
-      {/* Add Exercise Dialog */}
       <AddExerciseDialog
         muscleGroups={muscleGroups}
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-      />
-
-      {/* AI Populate Dialog */}
-      <AIPopulateDialog
-        muscleGroups={muscleGroups}
-        open={aiDialogOpen}
-        onOpenChange={setAiDialogOpen}
       />
     </div>
   );

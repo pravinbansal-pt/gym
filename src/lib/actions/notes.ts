@@ -2,6 +2,13 @@
 
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
+import { getSession } from "@/lib/get-session";
+
+async function requireAuth() {
+  const session = await getSession();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  return session.user.id;
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -123,6 +130,7 @@ export async function createNote(
   data: CreateNoteInput
 ): Promise<ActionResult> {
   try {
+    await requireAuth();
     const note = await db.exerciseNote.create({
       data: {
         exerciseId: data.exerciseId,
@@ -159,6 +167,7 @@ export async function updateNote(
   data: UpdateNoteInput
 ): Promise<ActionResult> {
   try {
+    await requireAuth();
     const note = await db.exerciseNote.update({
       where: { id },
       data: {
@@ -179,6 +188,7 @@ export async function updateNote(
 
 export async function togglePinNote(id: string): Promise<ActionResult> {
   try {
+    await requireAuth();
     // Get the current note to check its pinned status
     const existing = await db.exerciseNote.findUnique({
       where: { id },
@@ -208,6 +218,7 @@ export async function togglePinNote(id: string): Promise<ActionResult> {
 
 export async function deleteNote(id: string): Promise<ActionResult> {
   try {
+    await requireAuth();
     const note = await db.exerciseNote.delete({
       where: { id },
     });

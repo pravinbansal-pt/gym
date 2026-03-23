@@ -2,10 +2,18 @@
 
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
+import { getSession } from "@/lib/get-session";
+
+async function requireAuth() {
+  const session = await getSession();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  return session.user.id;
+}
 
 // ─── Create Session from Workout Template ──────────────────────────
 
-export async function createSessionFromWorkout(programWorkoutId: string) {
+export async function createSessionFromWorkout(programWorkoutId: string, scheduledWorkoutId?: string) {
+  await requireAuth();
   // Check if a session already exists for today for this workout
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
@@ -16,7 +24,7 @@ export async function createSessionFromWorkout(programWorkoutId: string) {
     where: {
       programWorkoutId,
       createdAt: { gte: todayStart, lte: todayEnd },
-      status: { in: ["PLANNED", "IN_PROGRESS"] },
+      status: { in: ["PLANNED", "IN_PROGRESS", "PAUSED"] },
     },
     select: { id: true },
   });
@@ -75,6 +83,14 @@ export async function createSessionFromWorkout(programWorkoutId: string) {
     },
     select: { id: true },
   });
+
+  // Link to scheduled workout if provided
+  if (scheduledWorkoutId) {
+    await db.scheduledWorkout.update({
+      where: { id: scheduledWorkoutId },
+      data: { sessionId: session.id },
+    }).catch(() => {}); // Ignore if already linked or invalid
+  }
 
   return { sessionId: session.id };
 }
@@ -167,6 +183,7 @@ export async function updateSet(
     setType?: "WARM_UP" | "WORKING";
   }
 ) {
+  await requireAuth();
   const updated = await db.workoutSet.update({
     where: { id: setId },
     data,
@@ -177,6 +194,7 @@ export async function updateSet(
 // ─── Complete a Set ─────────────────────────────────────────────────
 
 export async function completeSet(setId: string, weight: number, reps: number) {
+  await requireAuth();
   const set = await db.workoutSet.update({
     where: { id: setId },
     data: {
@@ -224,6 +242,7 @@ export async function completeSet(setId: string, weight: number, reps: number) {
 // ─── Uncomplete a Set ───────────────────────────────────────────────
 
 export async function uncompleteSet(setId: string) {
+  await requireAuth();
   return db.workoutSet.update({
     where: { id: setId },
     data: { completedAt: null },
@@ -233,6 +252,7 @@ export async function uncompleteSet(setId: string) {
 // ─── Add a Set ──────────────────────────────────────────────────────
 
 export async function addSet(sessionExerciseId: string) {
+  await requireAuth();
   const lastSet = await db.workoutSet.findFirst({
     where: { sessionExerciseId },
     orderBy: { orderIndex: "desc" },
@@ -252,12 +272,14 @@ export async function addSet(sessionExerciseId: string) {
 // ─── Remove a Set ───────────────────────────────────────────────────
 
 export async function removeSet(setId: string) {
+  await requireAuth();
   await db.workoutSet.delete({ where: { id: setId } });
 }
 
 // ─── Start Session ──────────────────────────────────────────────────
 
 export async function startSession(sessionId: string) {
+  await requireAuth();
   return db.workoutSession.update({
     where: { id: sessionId },
     data: {
@@ -267,19 +289,89 @@ export async function startSession(sessionId: string) {
   });
 }
 
+// ─── Pause Session ──────────────────────────────────────────────────
+
+export async function pauseSession(sessionId: string) {
+  await requireAuth();
+  return db.workoutSession.update({
+    where: { id: sessionId },
+    data: {
+      status: "PAUSED",
+      pausedAt: new Date(),
+    },
+  });
+}
+
+// ─── Resume Session ─────────────────────────────────────────────────
+
+export async function resumeSession(sessionId: string) {
+  await requireAuth();
+  const session = await db.workoutSession.findUniqueOrThrow({
+    where: { id: sessionId },
+    select: { pausedAt: true, totalPausedSeconds: true },
+  });
+
+  const additionalPaused = session.pausedAt
+    ? Math.floor((Date.now() - session.pausedAt.getTime()) / 1000)
+    : 0;
+
+  return db.workoutSession.update({
+    where: { id: sessionId },
+    data: {
+      status: "IN_PROGRESS",
+      pausedAt: null,
+      totalPausedSeconds: session.totalPausedSeconds + additionalPaused,
+    },
+  });
+}
+
 // ─── End Session ────────────────────────────────────────────────────
 
 export async function endSession(sessionId: string) {
+  await requireAuth();
+  // If ending while paused, accumulate the final pause duration
+  const current = await db.workoutSession.findUniqueOrThrow({
+    where: { id: sessionId },
+    select: { pausedAt: true, totalPausedSeconds: true },
+  });
+
+  const additionalPaused = current.pausedAt
+    ? Math.floor((Date.now() - current.pausedAt.getTime()) / 1000)
+    : 0;
+
   const session = await db.workoutSession.update({
     where: { id: sessionId },
     data: {
       status: "COMPLETED",
       endedAt: new Date(),
+      pausedAt: null,
+      totalPausedSeconds: current.totalPausedSeconds + additionalPaused,
     },
   });
 
+  // If this session is linked to a scheduled workout, mark it completed
+  const scheduledWorkout = await db.scheduledWorkout.findUnique({
+    where: { sessionId },
+  });
+  if (scheduledWorkout && scheduledWorkout.status === "SCHEDULED") {
+    await db.scheduledWorkout.update({
+      where: { id: scheduledWorkout.id },
+      data: { status: "COMPLETED" },
+    });
+    revalidatePath("/calendar");
+  }
+
   revalidatePath("/history");
   return session;
+}
+
+// ─── Cancel / Delete Session ────────────────────────────────────────
+
+export async function deleteSession(sessionId: string) {
+  await requireAuth();
+  await db.workoutSession.delete({ where: { id: sessionId } });
+  revalidatePath("/");
+  revalidatePath("/history");
 }
 
 // ─── Save Exercise Note ─────────────────────────────────────────────
@@ -290,6 +382,7 @@ export async function saveExerciseNote(
   content: string,
   isPinned: boolean = false
 ) {
+  await requireAuth();
   return db.exerciseNote.create({
     data: {
       exerciseId,
@@ -303,6 +396,7 @@ export async function saveExerciseNote(
 // ─── Toggle Note Pin ────────────────────────────────────────────────
 
 export async function toggleNotePin(noteId: string) {
+  await requireAuth();
   const note = await db.exerciseNote.findUniqueOrThrow({ where: { id: noteId } });
   return db.exerciseNote.update({
     where: { id: noteId },
@@ -371,6 +465,7 @@ export async function updateSessionSets(
     reps: number | null;
   }>
 ) {
+  await requireAuth();
   await Promise.all(
     updates.map((u) =>
       db.workoutSet.update({
@@ -390,6 +485,7 @@ export async function addSetToSession(
   sessionExerciseId: string,
   data: { weight: number | null; reps: number | null }
 ) {
+  await requireAuth();
   const lastSet = await db.workoutSet.findFirst({
     where: { sessionExerciseId },
     orderBy: { orderIndex: "desc" },

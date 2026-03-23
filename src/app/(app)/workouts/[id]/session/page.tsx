@@ -1,4 +1,6 @@
 import { getSessionData, getPreviousPerformance, getPinnedNotes } from "../../_actions";
+import { getAppSettings } from "../../../settings/_actions";
+import { resolveWeightUnit } from "@/lib/weight-utils";
 import { LiveSession } from "./live-session";
 
 interface Props {
@@ -14,7 +16,10 @@ type PinnedNoteResult = Awaited<ReturnType<typeof getPinnedNotes>>[number];
 
 export default async function SessionPage({ params }: Props) {
   const { id } = await params;
-  const session = await getSessionData(id);
+  const [session, settings] = await Promise.all([
+    getSessionData(id),
+    getAppSettings(),
+  ]);
 
   // Fetch previous performance and pinned notes for each exercise
   const exerciseDataPromises = session.exercises.map(async (se: SessionExercise) => {
@@ -59,6 +64,8 @@ export default async function SessionPage({ params }: Props) {
     status: session.status,
     startedAt: session.startedAt?.toISOString() ?? null,
     endedAt: session.endedAt?.toISOString() ?? null,
+    pausedAt: session.pausedAt?.toISOString() ?? null,
+    totalPausedSeconds: session.totalPausedSeconds,
     exercises: session.exercises.map((se: SessionExercise) => {
       const extraData = exerciseData.find(
         (ed: { sessionExerciseId: string }) => ed.sessionExerciseId === se.id
@@ -71,6 +78,7 @@ export default async function SessionPage({ params }: Props) {
         orderIndex: se.orderIndex,
         restSeconds: restSecondsMap[se.exerciseId] ?? 90,
         warmUpPercent: warmUpPercentMap[se.exerciseId] ?? 0.6,
+        weightUnit: resolveWeightUnit(se.exercise.weightUnit, settings.defaultWeightUnit),
         sets: se.sets.map((s: SessionSet) => ({
           id: s.id,
           setType: s.setType,

@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import { Layers } from "lucide-react";
+import { Clock, Layers } from "lucide-react";
 
 type Workout = {
   name: string;
@@ -10,10 +10,12 @@ export function WorkoutHeader({
   workout,
   programName,
   phaseName,
+  estimatedTime,
 }: {
   workout: Workout;
   programName: string;
   phaseName: string | null;
+  estimatedTime?: string | null;
 }) {
   return (
     <div className="space-y-1">
@@ -34,6 +36,12 @@ export function WorkoutHeader({
         <Badge variant="outline" className="text-sm">
           Day {workout.dayIndex + 1}
         </Badge>
+        {estimatedTime && (
+          <Badge variant="secondary" className="text-sm">
+            <Clock className="size-3" />
+            {estimatedTime}
+          </Badge>
+        )}
       </div>
     </div>
   );

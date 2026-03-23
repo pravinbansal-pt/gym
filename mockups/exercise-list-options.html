@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Exercise List — 3 Options</title>
+<style>
+  :root {
+    --background: #ffffff;
+    --foreground: #0a0a0a;
+    --card: #ffffff;
+    --card-foreground: #0a0a0a;
+    --muted: #f5f5f5;
+    --muted-foreground: #737373;
+    --border: #e5e5e5;
+    --input: #e5e5e5;
+    --ring: #1a1a1a;
+    --primary: #1a1a1a;
+    --primary-foreground: #fafafa;
+    --destructive: #ef4444;
+    --accent: #f5f5f5;
+    --radius: 8px;
+    --amber-bg: #fef3c7; --amber-fg: #b45309;
+    --blue-bg: #dbeafe; --blue-fg: #1d4ed8;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #fafafa;
+    color: var(--foreground);
+    line-height: 1.5;
+  }
+  .page { max-width: 720px; margin: 0 auto; padding: 32px 16px; }
+
+  /* ── Shared ── */
+  h1 { font-size: 22px; font-weight: 700; margin-bottom: 32px; padding-bottom: 16px; border-bottom: 1px solid var(--border); color: var(--muted-foreground); }
+  h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  h2 .count { font-size: 11px; font-weight: 600; background: var(--muted); color: var(--muted-foreground); padding: 2px 8px; border-radius: 10px; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-bottom: 6px;
+  }
+
+  /* Exercise header — shared across all options */
+  .ex-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px;
+    cursor: pointer; user-select: none;
+  }
+  .ex-header:hover { background: var(--muted); }
+  .reorder { display: flex; flex-direction: column; }
+  .reorder button {
+    background: none; border: none; cursor: pointer;
+    color: #ccc; font-size: 12px; line-height: 1; padding: 0;
+  }
+  .reorder button:hover { color: #888; }
+  .num {
+    width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+    border-radius: 50%; background: var(--muted);
+    font-size: 12px; font-weight: 700; color: var(--muted-foreground); flex-shrink: 0;
+  }
+  .ex-info { flex: 1; min-width: 0; }
+  .ex-name { font-size: 14px; font-weight: 600; }
+  .ex-meta { font-size: 11px; color: var(--muted-foreground); }
+  .pills { display: flex; gap: 2px; align-items: center; flex-shrink: 0; }
+  .pill { width: 5px; height: 16px; border-radius: 2px; }
+  .pill.w { background: #fbbf24; }
+  .pill.s { background: #60a5fa; }
+  .pill-label { font-size: 11px; color: var(--muted-foreground); margin-left: 4px; white-space: nowrap; }
+  .chevron { color: #ccc; font-size: 14px; transition: transform 0.2s; flex-shrink: 0; }
+  .card.open .chevron { transform: rotate(90deg); }
+  .del-btn {
+    background: none; border: none; cursor: pointer; color: #ddd; font-size: 13px;
+    padding: 2px; flex-shrink: 0; transition: color 0.15s;
+  }
+  .del-btn:hover { color: var(--destructive); }
+
+  /* Panels */
+  .panel { display: none; border-top: 1px solid var(--border); background: #fafafa; }
+  .card.open .panel { display: block; }
+
+  /* ── Inputs ── */
+  .set-input {
+    height: 28px; width: 60px;
+    border: 1px solid var(--input); border-radius: 6px;
+    background: var(--background);
+    text-align: center; font-size: 13px; font-weight: 500;
+    color: var(--foreground); outline: none;
+  }
+  .set-input:hover { border-color: #ccc; }
+  .set-input:focus { border-color: var(--ring); box-shadow: 0 0 0 2px rgba(0,0,0,0.05); }
+  .set-input::placeholder { color: #ccc; }
+
+  /* Badge */
+  .badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 28px; height: 24px; border-radius: 6px;
+    font-size: 10px; font-weight: 700; cursor: pointer;
+    border: none; transition: all 0.15s;
+  }
+  .badge.warm { background: var(--amber-bg); color: var(--amber-fg); }
+  .badge.warm:hover { background: #fde68a; }
+  .badge.work { background: var(--blue-bg); color: var(--blue-fg); }
+  .badge.work:hover { background: #bfdbfe; }
+
+  /* Add set button */
+  .add-set {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    width: 100%; padding: 8px; margin-top: 4px;
+    background: none; border: 1px dashed var(--border); border-radius: 6px;
+    font-size: 12px; font-weight: 500; color: var(--muted-foreground);
+    cursor: pointer; transition: all 0.15s;
+  }
+  .add-set:hover { border-color: #aaa; color: var(--foreground); background: var(--muted); }
+
+  .prev-text { font-size: 12px; color: #bbb; }
+
+  /* Rest time */
+  .rest-input {
+    width: 40px; background: none; border: none; border-bottom: 1px solid transparent;
+    text-align: center; font-size: 11px; color: var(--muted-foreground);
+    outline: none; font-family: inherit; font-weight: 500;
+  }
+  .rest-input:hover { border-bottom-color: #ccc; }
+  .rest-input:focus { border-bottom-color: var(--ring); color: var(--foreground); }
+
+  /* ────────────────────────────────────────────────
+     OPTION A — shadcn Table
+  ──────────────────────────────────────────────── */
+  .opt-a table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .opt-a th {
+    font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--muted-foreground); text-align: left;
+    padding: 4px 8px; border-bottom: 1px solid var(--border);
+  }
+  .opt-a th:last-child { width: 28px; }
+  .opt-a td {
+    padding: 6px 8px; vertical-align: middle;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .opt-a tr:last-child td { border-bottom: none; }
+  .opt-a tr:hover td { background: var(--muted); }
+  .opt-a .rest-row td {
+    padding: 2px 8px; background: none;
+  }
+  .opt-a .rest-row:hover td { background: none; }
+  .opt-a .rest-sep {
+    display: flex; align-items: center; gap: 6px;
+  }
+  .opt-a .rest-sep .line { flex: 1; height: 1px; background: #e0e0e0; }
+  .opt-a .rest-sep .rest-label { display: flex; align-items: center; gap: 3px; }
+
+  /* ────────────────────────────────────────────────
+     OPTION B — Tight inline rows with Previous as subtitle
+  ──────────────────────────────────────────────── */
+  .opt-b .set-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 12px;
+    border-bottom: 1px solid #f5f5f5;
+  }
+  .opt-b .set-row:last-of-type { border-bottom: none; }
+  .opt-b .set-row:hover { background: var(--muted); }
+  .opt-b .set-left { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+  .opt-b .set-prev { font-size: 11px; color: #bbb; }
+  .opt-b .set-inputs { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+  .opt-b .set-inputs .unit { font-size: 10px; color: #bbb; }
+  .opt-b .set-inputs .times { font-size: 11px; color: #bbb; margin: 0 2px; }
+  .opt-b .rest-bar {
+    display: flex; align-items: center; justify-content: center;
+    gap: 4px; padding: 3px 12px;
+    background: #f8f8f8;
+  }
+  .opt-b .rest-bar .line { flex: 1; height: 1px; background: #e8e8e8; }
+  .opt-b .rest-time {
+    font-size: 11px; font-weight: 500; color: #3b82f6;
+    background: none; border: none; text-align: center; width: 36px; outline: none;
+    cursor: pointer;
+  }
+  .opt-b .rest-time:hover { color: #2563eb; }
+  .opt-b .rm {
+    background: none; border: none; cursor: pointer; color: #ddd; padding: 2px; border-radius: 4px;
+    transition: all 0.15s; font-size: 12px;
+  }
+  .opt-b .rm:hover { color: var(--destructive); background: #fef2f2; }
+
+  /* ────────────────────────────────────────────────
+     OPTION C — Dense spreadsheet grid
+  ──────────────────────────────────────────────── */
+  .opt-c .grid-header {
+    display: grid;
+    grid-template-columns: 44px 1fr 72px 56px 56px 28px;
+    align-items: center;
+    padding: 0 8px;
+    gap: 4px;
+  }
+  .opt-c .grid-header span {
+    font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--muted-foreground); padding: 4px 0;
+    border-bottom: 2px solid var(--border);
+  }
+  .opt-c .set-row {
+    display: grid;
+    grid-template-columns: 44px 1fr 72px 56px 56px 28px;
+    align-items: center;
+    padding: 0 8px;
+    gap: 4px;
+    min-height: 36px;
+  }
+  .opt-c .set-row:hover { background: var(--muted); border-radius: 6px; }
+  .opt-c .rest-row {
+    display: grid;
+    grid-template-columns: 44px 1fr 72px 56px 56px 28px;
+    align-items: center;
+    padding: 0 8px;
+    gap: 4px;
+    min-height: 24px;
+  }
+  .opt-c .rest-inline {
+    grid-column: 3 / 6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+  }
+  .opt-c .rest-chip {
+    display: inline-flex; align-items: center; gap: 3px;
+    padding: 1px 8px; border-radius: 10px;
+    background: #eff6ff; color: #3b82f6;
+    font-size: 10px; font-weight: 600;
+    cursor: pointer; border: none; transition: background 0.15s;
+  }
+  .opt-c .rest-chip:hover { background: #dbeafe; }
+  .opt-c .rest-chip svg { width: 10px; height: 10px; }
+  .opt-c .set-input { width: 52px; height: 26px; font-size: 12px; }
+  .opt-c .prev-text { font-size: 11px; }
+  .opt-c .rm {
+    background: none; border: none; cursor: pointer; color: #ddd; font-size: 11px;
+    display: flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px; border-radius: 4px; transition: all 0.15s;
+  }
+  .opt-c .rm:hover { color: var(--destructive); background: #fef2f2; }
+
+  .section-divider {
+    margin: 48px 0 32px;
+    border: none; border-top: 2px dashed #ddd;
+  }
+  .option-label {
+    display: inline-block;
+    padding: 4px 12px; border-radius: 6px;
+    background: var(--primary); color: var(--primary-foreground);
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+  .option-desc {
+    font-size: 13px; color: var(--muted-foreground); margin-bottom: 16px;
+  }
+
+  /* Clock SVG for rest */
+  .clock-svg { width: 10px; height: 10px; vertical-align: middle; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<!-- ═══════════════════════════════════════════════
+     OPTION A — shadcn Table
+═══════════════════════════════════════════════ -->
+<span class="option-label">Option A</span>
+<p class="option-desc">shadcn Table component — proper column alignment, hover rows, data-dense. Rest between rows as a subtle separator.</p>
+
+<h2>Exercises <span class="count">2</span></h2>
+
+<div class="card open opt-a">
+  <div class="ex-header" onclick="this.parentElement.classList.toggle('open')">
+    <div class="reorder"><button>&#8249;</button><button>&#8250;</button></div>
+    <div class="num">1</div>
+    <div class="ex-info">
+      <div class="ex-name">Hack Squat</div>
+      <div class="ex-meta">Quadriceps · Machine</div>
+    </div>
+    <div class="pills">
+      <div class="pill w"></div><div class="pill s"></div><div class="pill s"></div><div class="pill s"></div>
+      <span class="pill-label">1W + 3S</span>
+    </div>
+    <div class="chevron">›</div>
+    <button class="del-btn" onclick="event.stopPropagation()">✕</button>
+  </div>
+  <div class="panel" style="padding: 8px 14px 12px;">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:44px">Set</th>
+          <th>Previous</th>
+          <th style="width:72px">kg</th>
+          <th style="width:72px">Reps</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><button class="badge warm">W1</button></td>
+          <td class="prev-text">—</td>
+          <td><input class="set-input" value="20"></td>
+          <td><input class="set-input" value="10"></td>
+          <td><button class="del-btn" style="color:#ccc">—</button></td>
+        </tr>
+        <tr class="rest-row">
+          <td colspan="5">
+            <div class="rest-sep">
+              <div class="line"></div>
+              <div class="rest-label">
+                <svg class="clock-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <input class="rest-input" value="1:30">
+              </div>
+              <div class="line"></div>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td><button class="badge work">S1</button></td>
+          <td class="prev-text">—</td>
+          <td><input class="set-input" value="30"></td>
+          <td><input class="set-input" value="8"></td>
+          <td><button class="del-btn" style="color:#ccc">—</button></td>
+        </tr>
+        <tr class="rest-row">
+          <td colspan="5">
+            <div class="rest-sep">
+              <div class="line"></div>
+              <div class="rest-label">
+                <svg class="clock-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <input class="rest-input" value="2:30">
+              </div>
+              <div class="line"></div>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td><button class="badge work">S2</button></td>
+          <td class="prev-text">30 kg × 8</td>
+          <td><input class="set-input" value="30"></td>
+          <td><input class="set-input" value="8"></td>
+          <td><button class="del-btn" style="color:#ccc">—</button></td>
+        </tr>
+        <tr class="rest-row">
+          <td colspan="5">
+            <div class="rest-sep">
+              <div class="line"></div>
+              <div class="rest-label">
+                <svg class="clock-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <input class="rest-input" value="2:30">
+              </div>
+              <div class="line"></div>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td><button class="badge work">S3</button></td>
+          <td class="prev-text">30 kg × 8</td>
+          <td><input class="set-input" value="30"></td>
+          <td><input class="set-input" value="8"></td>
+          <td><button class="del-btn" style="color:#ccc">—</button></td>
+        </tr>
+      </tbody>
+    </table>
+    <button class="add-set">+ Add Set (2:30)</button>
+  </div>
+</div>
+
+<div class="card opt-a">
+  <div class="ex-header" onclick="this.parentElement.classList.toggle('open')">
+    <div class="reorder"><button>&#8249;</button><button>&#8250;</button></div>
+    <div class="num">2</div>
+    <div class="ex-info">
+      <div class="ex-name">Leg Extension</div>
+      <div class="ex-meta">Quadriceps · Machine</div>
+    </div>
+    <div class="pills">
+      <div class="pill w"></div><div class="pill s"></div><div class="pill s"></div>
+      <span class="pill-label">1W + 2S</span>
+    </div>
+    <div class="chevron">›</div>
+    <button class="del-btn" onclick="event.stopPropagation()">✕</button>
+  </div>
+  <div class="panel"></div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     OPTION B — Compact inline with rest as colored accent
+═══════════════════════════════════════════════ -->
+<hr class="section-divider">
+<span class="option-label">Option B</span>
+<p class="option-desc">Compact flex rows — Previous text inline after badge, inputs grouped right with "×" between kg and reps. Rest as a blue accent time. No table overhead.</p>
+
+<h2>Exercises <span class="count">2</span></h2>
+
+<div class="card open opt-b">
+  <div class="ex-header" onclick="this.parentElement.classList.toggle('open')">
+    <div class="reorder"><button>&#8249;</button><button>&#8250;</button></div>
+    <div class="num">1</div>
+    <div class="ex-info">
+      <div class="ex-name">Hack Squat</div>
+      <div class="ex-meta">Quadriceps · Machine</div>
+    </div>
+    <div class="pills">
+      <div class="pill w"></div><div class="pill s"></div><div class="pill s"></div><div class="pill s"></div>
+      <span class="pill-label">1W + 3S</span>
+    </div>
+    <div class="chevron">›</div>
+    <button class="del-btn" onclick="event.stopPropagation()">✕</button>
+  </div>
+  <div class="panel">
+    <div class="set-row">
+      <div class="set-left">
+        <button class="badge warm">W1</button>
+        <span class="set-prev">no previous</span>
+      </div>
+      <div class="set-inputs">
+        <input class="set-input" value="20" style="width:56px">
+        <span class="unit">kg</span>
+        <span class="times">×</span>
+        <input class="set-input" value="10" style="width:48px">
+        <button class="rm">—</button>
+      </div>
+    </div>
+    <div class="rest-bar">
+      <div class="line"></div>
+      <input class="rest-time" value="1:30">
+      <div class="line"></div>
+    </div>
+    <div class="set-row">
+      <div class="set-left">
+        <button class="badge work">S1</button>
+        <span class="set-prev">no previous</span>
+      </div>
+      <div class="set-inputs">
+        <input class="set-input" value="30" style="width:56px">
+        <span class="unit">kg</span>
+        <span class="times">×</span>
+        <input class="set-input" value="8" style="width:48px">
+        <button class="rm">—</button>
+      </div>
+    </div>
+    <div class="rest-bar">
+      <div class="line"></div>
+      <input class="rest-time" value="2:30">
+      <div class="line"></div>
+    </div>
+    <div class="set-row">
+      <div class="set-left">
+        <button class="badge work">S2</button>
+        <span class="set-prev">30 kg × 8</span>
+      </div>
+      <div class="set-inputs">
+        <input class="set-input" value="30" style="width:56px">
+        <span class="unit">kg</span>
+        <span class="times">×</span>
+        <input class="set-input" value="8" style="width:48px">
+        <button class="rm">—</button>
+      </div>
+    </div>
+    <div class="rest-bar">
+      <div class="line"></div>
+      <input class="rest-time" value="2:30">
+      <div class="line"></div>
+    </div>
+    <div class="set-row">
+      <div class="set-left">
+        <button class="badge work">S3</button>
+        <span class="set-prev">30 kg × 8</span>
+      </div>
+      <div class="set-inputs">
+        <input class="set-input" value="30" style="width:56px">
+        <span class="unit">kg</span>
+        <span class="times">×</span>
+        <input class="set-input" value="8" style="width:48px">
+        <button class="rm">—</button>
+      </div>
+    </div>
+    <div style="padding: 4px 12px 8px;">
+      <button class="add-set">+ Add Set (2:30)</button>
+    </div>
+  </div>
+</div>
+
+<div class="card opt-b">
+  <div class="ex-header" onclick="this.parentElement.classList.toggle('open')">
+    <div class="reorder"><button>&#8249;</button><button>&#8250;</button></div>
+    <div class="num">2</div>
+    <div class="ex-info">
+      <div class="ex-name">Leg Extension</div>
+      <div class="ex-meta">Quadriceps · Machine</div>
+    </div>
+    <div class="pills">
+      <div class="pill w"></div><div class="pill s"></div><div class="pill s"></div>
+      <span class="pill-label">1W + 2S</span>
+    </div>
+    <div class="chevron">›</div>
+    <button class="del-btn" onclick="event.stopPropagation()">✕</button>
+  </div>
+  <div class="panel"></div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     OPTION C — Dense grid with inline rest chips
+═══════════════════════════════════════════════ -->
+<hr class="section-divider">
+<span class="option-label">Option C</span>
+<p class="option-desc">Dense fixed-width grid — every column aligned pixel-perfect. Rest shown as a small chip inline in the input columns. Most space-efficient.</p>
+
+<h2>Exercises <span class="count">2</span></h2>
+
+<div class="card open opt-c">
+  <div class="ex-header" onclick="this.parentElement.classList.toggle('open')">
+    <div class="reorder"><button>&#8249;</button><button>&#8250;</button></div>
+    <div class="num">1</div>
+    <div class="ex-info">
+      <div class="ex-name">Hack Squat</div>
+      <div class="ex-meta">Quadriceps · Machine</div>
+    </div>
+    <div class="pills">
+      <div class="pill w"></div><div class="pill s"></div><div class="pill s"></div><div class="pill s"></div>
+      <span class="pill-label">1W + 3S</span>
+    </div>
+    <div class="chevron">›</div>
+    <button class="del-btn" onclick="event.stopPropagation()">✕</button>
+  </div>
+  <div class="panel" style="padding: 6px 6px 10px;">
+    <div class="grid-header">
+      <span>Set</span>
+      <span>Previous</span>
+      <span style="text-align:center">Rest</span>
+      <span style="text-align:center">kg</span>
+      <span style="text-align:center">Reps</span>
+      <span></span>
+    </div>
+
+    <div class="set-row">
+      <div style="display:flex;justify-content:center"><button class="badge warm">W1</button></div>
+      <div class="prev-text">—</div>
+      <div style="text-align:center">—</div>
+      <div style="text-align:center"><input class="set-input" value="20"></div>
+      <div style="text-align:center"><input class="set-input" value="10"></div>
+      <div style="display:flex;justify-content:center"><button class="rm">—</button></div>
+    </div>
+
+    <div class="set-row">
+      <div style="display:flex;justify-content:center"><button class="badge work">S1</button></div>
+      <div class="prev-text">—</div>
+      <div style="text-align:center">
+        <button class="rest-chip">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          1:30
+        </button>
+      </div>
+      <div style="text-align:center"><input class="set-input" value="30"></div>
+      <div style="text-align:center"><input class="set-input" value="8"></div>
+      <div style="display:flex;justify-content:center"><button class="rm">—</button></div>
+    </div>
+
+    <div class="set-row">
+      <div style="display:flex;justify-content:center"><button class="badge work">S2</button></div>
+      <div class="prev-text">30 kg × 8</div>
+      <div style="text-align:center">
+        <button class="rest-chip">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          2:30
+        </button>
+      </div>
+      <div style="text-align:center"><input class="set-input" value="30"></div>
+      <div style="text-align:center"><input class="set-input" value="8"></div>
+      <div style="display:flex;justify-content:center"><button class="rm">—</button></div>
+    </div>
+
+    <div class="set-row">
+      <div style="display:flex;justify-content:center"><button class="badge work">S3</button></div>
+      <div class="prev-text">30 kg × 8</div>
+      <div style="text-align:center">
+        <button class="rest-chip">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          2:30
+        </button>
+      </div>
+      <div style="text-align:center"><input class="set-input" value="30"></div>
+      <div style="text-align:center"><input class="set-input" value="8"></div>
+      <div style="display:flex;justify-content:center"><button class="rm">—</button></div>
+    </div>
+
+    <div style="padding: 2px 2px 0;">
+      <button class="add-set">+ Add Set (2:30)</button>
+    </div>
+  </div>
+</div>
+
+<div class="card opt-c">
+  <div class="ex-header" onclick="this.parentElement.classList.toggle('open')">
+    <div class="reorder"><button>&#8249;</button><button>&#8250;</button></div>
+    <div class="num">2</div>
+    <div class="ex-info">
+      <div class="ex-name">Leg Extension</div>
+      <div class="ex-meta">Quadriceps · Machine</div>
+    </div>
+    <div class="pills">
+      <div class="pill w"></div><div class="pill s"></div><div class="pill s"></div>
+      <span class="pill-label">1W + 2S</span>
+    </div>
+    <div class="chevron">›</div>
+    <button class="del-btn" onclick="event.stopPropagation()">✕</button>
+  </div>
+  <div class="panel"></div>
+</div>
+
+</div>
+</body>
+</html>

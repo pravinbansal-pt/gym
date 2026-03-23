@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Workout Planning UI – Expandable Rows (Revised)</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #111; }
+
+  .page { max-width: 800px; margin: 24px auto; padding: 0 16px; }
+
+  .page-header { margin-bottom: 24px; }
+  .breadcrumb { font-size: 13px; color: #666; margin-bottom: 8px; }
+  .breadcrumb a { color: #666; text-decoration: none; }
+  h1 { font-size: 28px; font-weight: 700; }
+  h1 span { font-weight: 400; font-size: 16px; color: #888; }
+
+  .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .section-title { font-size: 18px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .badge-count { background: #f0f0f0; color: #666; padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; border: none; cursor: pointer; transition: all .15s; }
+  .btn-primary { background: #111; color: #fff; }
+  .btn-primary:hover { background: #333; }
+  .btn-ghost { background: none; color: #666; padding: 6px 8px; }
+  .btn-ghost:hover { background: #f0f0f0; color: #111; }
+  .btn-sm { padding: 5px 10px; font-size: 12px; }
+  .btn-icon { padding: 6px; }
+
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 6px; font-size: 12px; font-weight: 500; border: 1px solid #e0e0e0; color: #555; }
+
+  .card { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px; overflow: hidden; }
+
+  .input { border: 1px solid #ddd; border-radius: 6px; padding: 6px 10px; font-size: 14px; outline: none; transition: border .15s; }
+  .input:focus { border-color: #111; }
+  .input-sm { padding: 4px 8px; font-size: 13px; }
+  .input-mini { width: 64px; text-align: center; }
+
+  /* Exercise rows */
+  .exercise-row { border-bottom: 1px solid #f0f0f0; }
+  .exercise-row:last-child { border-bottom: none; }
+
+  .exercise-header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; cursor: pointer; transition: background .1s; user-select: none; }
+  .exercise-header:hover { background: #fafafa; }
+
+  .exercise-num { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: #f5f5f5; font-weight: 700; font-size: 13px; color: #888; flex-shrink: 0; }
+  .exercise-info { flex: 1; min-width: 0; }
+  .exercise-name { font-weight: 600; font-size: 15px; }
+  .exercise-meta { font-size: 12px; color: #888; }
+  .exercise-summary { display: flex; gap: 8px; flex-shrink: 0; }
+  .exercise-chevron { color: #ccc; font-size: 18px; flex-shrink: 0; transition: transform .2s; }
+  .exercise-row.expanded .exercise-chevron { transform: rotate(180deg); }
+
+  .exercise-detail { display: none; padding: 0 16px 16px 60px; }
+  .exercise-row.expanded .exercise-detail { display: block; }
+
+  /* Sets list with rest separators */
+  .sets-list { border: 1px solid #eee; border-radius: 8px; overflow: hidden; }
+
+  .sets-header { display: grid; grid-template-columns: 56px 1fr 1fr 40px; gap: 0; background: #fafafa; border-bottom: 1px solid #eee; }
+  .sets-header span { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: #999; font-weight: 600; padding: 6px 10px; }
+
+  .set-row { display: grid; grid-template-columns: 56px 1fr 1fr 40px; gap: 0; align-items: center; }
+  .set-row .cell { padding: 6px 10px; font-size: 13px; display: flex; align-items: center; }
+
+  .set-badge { display: inline-flex; align-items: center; justify-content: center; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .set-badge.warmup { background: #fff3e0; color: #e65100; }
+  .set-badge.working { background: #e3f2fd; color: #1565c0; }
+
+  .set-row .cell input { border: 1px solid transparent; background: transparent; font-size: 13px; padding: 4px 6px; border-radius: 4px; width: 100%; max-width: 90px; outline: none; text-align: center; }
+  .set-row .cell input:hover { background: #f5f5f5; }
+  .set-row .cell input:focus { border-color: #111; background: #fff; }
+  .set-row .cell .unit { font-size: 11px; color: #aaa; margin-left: 2px; white-space: nowrap; }
+  .set-row .cell .pct-hint { font-size: 10px; color: #c5a04e; margin-left: 4px; }
+
+  .set-row .remove-btn { background: none; border: none; color: #ddd; cursor: pointer; font-size: 14px; padding: 4px; transition: color .15s; }
+  .set-row .remove-btn:hover { color: #e53935; }
+
+  /* Rest separator */
+  .rest-separator { display: flex; align-items: center; gap: 8px; padding: 4px 10px; background: transparent; }
+  .rest-separator .rest-line { flex: 1; height: 1px; background: #e8e8e8; }
+  .rest-separator .rest-value { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #999; }
+  .rest-separator .rest-value input { border: none; background: transparent; font-size: 11px; color: #999; width: 36px; text-align: center; outline: none; padding: 2px; border-radius: 3px; }
+  .rest-separator .rest-value input:hover { background: #f0f0f0; }
+  .rest-separator .rest-value input:focus { background: #fff; border: 1px solid #111; color: #111; }
+  .rest-separator .rest-icon { font-size: 12px; color: #bbb; }
+
+  .add-set-row { padding: 6px 10px; text-align: center; }
+
+  .add-exercise-area { padding: 16px; border-top: 1px solid #e5e5e5; }
+  .add-btn-full { width: 100%; padding: 12px; border: 2px dashed #ddd; border-radius: 10px; background: none; font-size: 14px; color: #888; cursor: pointer; transition: all .15s; display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .add-btn-full:hover { border-color: #111; color: #111; }
+
+  .notes { margin-top: 32px; padding: 16px; background: #fff; border-radius: 12px; border: 1px solid #e5e5e5; }
+  .notes h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+  .notes ul { font-size: 13px; color: #555; line-height: 1.8; padding-left: 20px; }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <div class="page-header">
+    <div class="breadcrumb"><a href="#">&larr; Back to Pravin Split</a></div>
+    <h1>Legs A <span>Day 1</span></h1>
+  </div>
+
+  <div class="toolbar">
+    <h2 class="section-title">Exercises <span class="badge-count">3</span></h2>
+    <button class="btn btn-primary">&#9655; Start Workout</button>
+  </div>
+
+  <div class="card">
+
+    <!-- ── Exercise 1: Hack Squat (expanded) ── -->
+    <div class="exercise-row expanded" onclick="this.classList.toggle('expanded')">
+      <div class="exercise-header">
+        <div class="exercise-num">1</div>
+        <div class="exercise-info">
+          <div class="exercise-name">Hack Squat</div>
+          <div class="exercise-meta">Quadriceps &middot; Machine</div>
+        </div>
+        <div class="exercise-summary">
+          <span class="badge">1W + 3S</span>
+          <span class="badge">6-8 reps</span>
+        </div>
+        <div class="exercise-chevron">&#9660;</div>
+      </div>
+
+      <div class="exercise-detail" onclick="event.stopPropagation()">
+        <div class="sets-list">
+          <div class="sets-header">
+            <span>Set</span>
+            <span>Weight</span>
+            <span>Reps</span>
+            <span></span>
+          </div>
+
+          <!-- Warm-up 1 -->
+          <div class="set-row">
+            <div class="cell"><span class="set-badge warmup">W1</span></div>
+            <div class="cell"><input value="60"><span class="unit">kg</span><span class="pct-hint">(60%)</span></div>
+            <div class="cell"><input value="10"></div>
+            <div class="cell"><button class="remove-btn">&#10005;</button></div>
+          </div>
+
+          <!-- Rest between W1 → S1 -->
+          <div class="rest-separator">
+            <div class="rest-line"></div>
+            <div class="rest-value">
+              <span class="rest-icon">&#9201;</span>
+              <input value="2:00"> rest
+            </div>
+            <div class="rest-line"></div>
+          </div>
+
+          <!-- Set 1 -->
+          <div class="set-row">
+            <div class="cell"><span class="set-badge working">S1</span></div>
+            <div class="cell"><input value="100"><span class="unit">kg</span></div>
+            <div class="cell"><input value="6-8"></div>
+            <div class="cell"><button class="remove-btn">&#10005;</button></div>
+          </div>
+
+          <!-- Rest between S1 → S2 -->
+          <div class="rest-separator">
+            <div class="rest-line"></div>
+            <div class="rest-value">
+              <span class="rest-icon">&#9201;</span>
+              <input value="3:00"> rest
+            </div>
+            <div class="rest-line"></div>
+          </div>
+
+          <!-- Set 2 -->
+          <div class="set-row">
+            <div class="cell"><span class="set-badge working">S2</span></div>
+            <div class="cell"><input value="100"><span class="unit">kg</span></div>
+            <div class="cell"><input value="6-8"></div>
+            <div class="cell"><button class="remove-btn">&#10005;</button></div>
+          </div>
+
+          <!-- Rest between S2 → S3 -->
+          <div class="rest-separator">
+            <div class="rest-line"></div>
+            <div class="rest-value">
+              <span class="rest-icon">&#9201;</span>
+              <input value="3:00"> rest
+            </div>
+            <div class="rest-line"></div>
+          </div>
+
+          <!-- Set 3 -->
+          <div class="set-row">
+            <div class="cell"><span class="set-badge working">S3</span></div>
+            <div class="cell"><input value="100"><span class="unit">kg</span></div>
+            <div class="cell"><input value="6-8"></div>
+            <div class="cell"><button class="remove-btn">&#10005;</button></div>
+          </div>
+
+          <div class="add-set-row">
+            <button class="btn btn-ghost btn-sm">+ Add Set</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Exercise 2: Romanian Deadlift (expanded) ── -->
+    <div class="exercise-row expanded" onclick="this.classList.toggle('expanded')">
+      <div class="exercise-header">
+        <div class="exercise-num">2</div>
+        <div class="exercise-info">
+          <div class="exercise-name">Romanian Deadlift</div>
+          <div class="exercise-meta">Hamstrings &middot; Barbell</div>
+        </div>
+        <div class="exercise-summary">
+          <span class="badge">1W + 3S</span>
+          <span class="badge">8-10 reps</span>
+        </div>
+        <div class="exercise-chevron">&#9660;</div>
+      </div>
+
+      <div class="exercise-detail" onclick="event.stopPropagation()">
+        <div class="sets-list">
+          <div class="sets-header">
+            <span>Set</span>
+            <span>Weight</span>
+            <span>Reps</span>
+            <span></span>
+          </div>
+
+          <div class="set-row">
+            <div class="cell"><span class="set-badge warmup">W1</span></div>
+            <div class="cell"><input value="50"><span class="unit">kg</span><span class="pct-hint">(60%)</span></div>
+            <div class="cell"><input value="10"></div>
+            <div class="cell"><button class="remove-btn">&#10005;</button></div>
+          </div>
+
+          <div class="rest-separator">
+            <div class="rest-line"></div>
+            <div class="rest-value"><span class="rest-icon">&#9201;</span><input value="2:00"> rest</div>
+            <div class="rest-line"></div>
+          </div>
+
+          <div class="set-row">
+            <div class="cell"><span class="set-badge working">S1</span></div>
+            <div class="cell"><input value="80"><span class="unit">kg</span></div>
+            <div class="cell"><input value="8-10"></div>
+            <div class="cell"><button class="remove-btn">&#10005;</button></div>
+          </div>
+
+          <div class="rest-separator">
+            <div class="rest-line"></div>
+            <div class="rest-value"><span class="rest-icon">&#9201;</span><input value="2:30"> rest</div>
+            <div class="rest-line"></div>
+          </div>
+
+          <div class="set-row">
+            <div class="cell"><span class="set-badge working">S2</span></div>
+            <div class="cell"><input value="80"><span class="unit">kg</span></div>
+            <div class="cell"><input value="8-10"></div>
+            <div class="cell"><button class="remove-btn">&#10005;</button></div>
+          </div>
+
+          <div class="rest-separator">
+            <div class="rest-line"></div>
+            <div class="rest-value"><span class="rest-icon">&#9201;</span><input value="2:30"> rest</div>
+            <div class="rest-line"></div>
+          </div>
+
+          <div class="set-row">
+            <div class="cell"><span class="set-badge working">S3</span></div>
+            <div class="cell"><input value="80"><span class="unit">kg</span></div>
+            <div class="cell"><input value="8-10"></div>
+            <div class="cell"><button class="remove-btn">&#10005;</button></div>
+          </div>
+
+          <div class="add-set-row">
+            <button class="btn btn-ghost btn-sm">+ Add Set</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Exercise 3: Leg Extension (collapsed) ── -->
+    <div class="exercise-row" onclick="this.classList.toggle('expanded')">
+      <div class="exercise-header">
+        <div class="exercise-num">3</div>
+        <div class="exercise-info">
+          <div class="exercise-name">Leg Extension</div>
+          <div class="exercise-meta">Quadriceps &middot; Machine</div>
+        </div>
+        <div class="exercise-summary">
+          <span class="badge">4S</span>
+          <span class="badge">12-15 reps</span>
+        </div>
+        <div class="exercise-chevron">&#9660;</div>
+      </div>
+
+      <div class="exercise-detail" onclick="event.stopPropagation()">
+        <div class="sets-list">
+          <div class="sets-header">
+            <span>Set</span>
+            <span>Weight</span>
+            <span>Reps</span>
+            <span></span>
+          </div>
+
+          <div class="set-row">
+            <div class="cell"><span class="set-badge working">S1</span></div>
+            <div class="cell"><input value="40"><span class="unit">kg</span></div>
+            <div class="cell"><input value="12-15"></div>
+            <div class="cell"><button class="remove-btn">&#10005;</button></div>
+          </div>
+
+          <div class="rest-separator">
+            <div class="rest-line"></div>
+            <div class="rest-value"><span class="rest-icon">&#9201;</span><input value="1:30"> rest</div>
+            <div class="rest-line"></div>
+          </div>
+
+          <div class="set-row">
+            <div class="cell"><span class="set-badge working">S2</span></div>
+            <div class="cell"><input value="40"><span class="unit">kg</span></div>
+            <div class="cell"><input value="12-15"></div>
+            <div class="cell"><button class="remove-btn">&#10005;</button></div>
+          </div>
+
+          <div class="rest-separator">
+            <div class="rest-line"></div>
+            <div class="rest-value"><span class="rest-icon">&#9201;</span><input value="1:30"> rest</div>
+            <div class="rest-line"></div>
+          </div>
+
+          <div class="set-row">
+            <div class="cell"><span class="set-badge working">S3</span></div>
+            <div class="cell"><input value="40"><span class="unit">kg</span></div>
+            <div class="cell"><input value="12-15"></div>
+            <div class="cell"><button class="remove-btn">&#10005;</button></div>
+          </div>
+
+          <div class="rest-separator">
+            <div class="rest-line"></div>
+            <div class="rest-value"><span class="rest-icon">&#9201;</span><input value="1:30"> rest</div>
+            <div class="rest-line"></div>
+          </div>
+
+          <div class="set-row">
+            <div class="cell"><span class="set-badge working">S4</span></div>
+            <div class="cell"><input value="40"><span class="unit">kg</span></div>
+            <div class="cell"><input value="12-15"></div>
+            <div class="cell"><button class="remove-btn">&#10005;</button></div>
+          </div>
+
+          <div class="add-set-row">
+            <button class="btn btn-ghost btn-sm">+ Add Set</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="add-exercise-area">
+      <button class="add-btn-full">+ Add Exercise from Library</button>
+    </div>
+  </div>
+
+  <div class="notes">
+    <h3>How it works</h3>
+    <ul>
+      <li><strong>Rest sits between sets</strong> as a visual separator &mdash; clear what it refers to</li>
+      <li>Each rest value is independently editable (e.g., shorter rest after warm-up, longer between working sets)</li>
+      <li><strong>"+ Add Set"</strong> copies weight, reps, and rest from the last row &mdash; just click and go</li>
+      <li>No top-level "quick config" bar &mdash; the per-row approach avoids duplication</li>
+      <li>Warm-up sets show the percentage hint (60%) next to the weight</li>
+      <li>Click any value to edit inline &mdash; no dialogs needed</li>
+      <li>Click exercise header to collapse/expand</li>
+    </ul>
+  </div>
+</div>
+
+</body>
+</html>

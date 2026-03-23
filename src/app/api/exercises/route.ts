@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { EquipmentType } from "@/generated/prisma/client";
+import { getSession } from "@/lib/get-session";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -19,6 +20,11 @@ interface CreateExercisePayload {
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getSession();
+    if (!session?.user?.id) {
+      return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
 
     const muscleGroupId = searchParams.get("muscleGroupId");
@@ -80,6 +86,11 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await getSession();
+    if (!session?.user?.id) {
+      return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
+    }
+
     const body = (await request.json()) as CreateExercisePayload;
 
     if (!body.name) {

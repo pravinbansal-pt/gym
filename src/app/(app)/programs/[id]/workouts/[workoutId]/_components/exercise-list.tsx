@@ -1,46 +1,57 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
+import Link from "next/link";
 import {
   ChevronUp,
   ChevronDown,
-  Trash2,
-  Pencil,
-  Timer,
-  Flame,
+  ChevronRight,
+  Clock,
+  Dumbbell,
+  ExternalLink,
+  Plus,
   Target,
-  AlertCircle,
+  Minus,
+  Trash2,
+  X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Slider } from "@/components/ui/slider";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   removeExerciseFromWorkout,
   reorderWorkoutExercise,
-  updateWorkoutExercise,
+  updateProgramSet,
+  addSetToExercise,
+  removeProgramSet,
 } from "../../../../_actions";
 
-type ProgramDefaults = {
-  warmUpSets: number;
-  workingSets: number;
-  warmUpPercent: number;
+type SetConfig = {
+  id: string;
+  setType: "WARM_UP" | "WORKING";
+  targetWeight: number | null;
+  targetReps: string | null;
   restSeconds: number;
+  orderIndex: number;
 };
+
+type PreviousSet = { weight: number | null; reps: number | null };
 
 type ExerciseConfig = {
   id: string;
@@ -50,20 +61,23 @@ type ExerciseConfig = {
   warmUpPercent: number | null;
   targetReps: string | null;
   restSeconds: number | null;
+  sets: SetConfig[];
   exercise: {
     id: string;
     name: string;
+    description: string | null;
     equipmentType: string;
+    imageUrl: string | null;
     primaryMuscleGroup: { name: string };
   };
 };
 
-function formatRestTime(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  if (mins === 0) return `${secs}s`;
-  return `${mins}:${secs.toString().padStart(2, "0")}`;
-}
+type ProgramDefaults = {
+  warmUpSets: number;
+  workingSets: number;
+  warmUpPercent: number;
+  restSeconds: number;
+};
 
 function formatEquipment(type: string): string {
   return type
@@ -72,20 +86,56 @@ function formatEquipment(type: string): string {
     .join(" ");
 }
 
+function formatRestTime(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  if (mins === 0) return `0:${secs.toString().padStart(2, "0")}`;
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
+function parseRestTime(value: string): number | null {
+  const trimmed = value.trim();
+  if (trimmed.includes(":")) {
+    const [mins, secs] = trimmed.split(":");
+    const m = parseInt(mins!, 10);
+    const s = parseInt(secs!, 10);
+    if (isNaN(m) || isNaN(s)) return null;
+    return m * 60 + s;
+  }
+  const n = parseInt(trimmed, 10);
+  if (isNaN(n) || n < 0) return null;
+  return n * 60;
+}
+
+function autoFormatRest(value: string): string {
+  const secs = parseRestTime(value);
+  if (secs === null) return value;
+  return formatRestTime(secs);
+}
+
+function formatPrevious(prev: PreviousSet | undefined): string {
+  if (!prev) return "—";
+  const w = prev.weight != null ? prev.weight : "—";
+  const r = prev.reps != null ? prev.reps : "—";
+  return `${w} kg × ${r}`;
+}
+
 export function ExerciseList({
   exercises,
   programId,
   workoutId,
+  previousData,
   defaults,
 }: {
   exercises: ExerciseConfig[];
   programId: string;
   workoutId: string;
+  previousData: Record<string, PreviousSet[]>;
   defaults: ProgramDefaults;
 }) {
   if (exercises.length === 0) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-3">
         <h2 className="text-xl font-semibold tracking-tight">Exercises</h2>
         <Card>
           <CardContent className="flex flex-col items-center py-8 text-center">
@@ -100,20 +150,21 @@ export function ExerciseList({
   }
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-xl font-semibold tracking-tight">
+    <div className="space-y-3">
+      <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
         Exercises
-        <Badge variant="secondary" className="ml-2">
+        <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
           {exercises.length}
-        </Badge>
+        </span>
       </h2>
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         {exercises.map((config, idx) => (
-          <ExerciseCard
+          <ExerciseRow
             key={config.id}
             config={config}
             programId={programId}
             workoutId={workoutId}
+            previousSets={previousData[config.exercise.id] ?? []}
             defaults={defaults}
             isFirst={idx === 0}
             isLast={idx === exercises.length - 1}
@@ -125,10 +176,11 @@ export function ExerciseList({
   );
 }
 
-function ExerciseCard({
+function ExerciseRow({
   config,
   programId,
   workoutId,
+  previousSets,
   defaults,
   isFirst,
   isLast,
@@ -137,301 +189,458 @@ function ExerciseCard({
   config: ExerciseConfig;
   programId: string;
   workoutId: string;
+  previousSets: PreviousSet[];
   defaults: ProgramDefaults;
   isFirst: boolean;
   isLast: boolean;
   index: number;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const warmUp = config.warmUpSets ?? defaults.warmUpSets;
-  const working = config.workingSets ?? defaults.workingSets;
-  const rest = config.restSeconds ?? defaults.restSeconds;
-  const warmUpPct = config.warmUpPercent ?? defaults.warmUpPercent;
+  const warmUpCount = config.sets.filter((s) => s.setType === "WARM_UP").length;
+  const workingCount = config.sets.filter(
+    (s) => s.setType === "WORKING"
+  ).length;
 
-  const hasOverride =
-    config.warmUpSets !== null ||
-    config.workingSets !== null ||
-    config.restSeconds !== null ||
-    config.warmUpPercent !== null;
+  const { exercise } = config;
 
   return (
-    <Card size="sm" className="group">
-      <CardContent className="flex items-start gap-3">
-        <div className="flex flex-col gap-0.5 pt-1">
-          <Button
-            variant="ghost"
-            size="icon-xs"
+    <div className="overflow-hidden rounded-lg border bg-card transition-shadow hover:shadow-sm">
+      {/* Header */}
+      <div
+        className="flex w-full items-center gap-2.5 px-3 py-2 cursor-pointer"
+        onClick={() => setExpanded(!expanded)}
+      >
+        {/* Reorder */}
+        <div className="flex flex-col" onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
             disabled={isFirst}
+            className="text-muted-foreground/40 hover:text-muted-foreground disabled:opacity-20 leading-none"
             onClick={() =>
               reorderWorkoutExercise(config.id, programId, workoutId, "up")
             }
           >
-            <ChevronUp className="size-3" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-xs"
+            <ChevronUp className="size-3.5" />
+          </button>
+          <button
+            type="button"
             disabled={isLast}
+            className="text-muted-foreground/40 hover:text-muted-foreground disabled:opacity-20 leading-none"
             onClick={() =>
               reorderWorkoutExercise(config.id, programId, workoutId, "down")
             }
           >
-            <ChevronDown className="size-3" />
-          </Button>
+            <ChevronDown className="size-3.5" />
+          </button>
         </div>
 
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted font-mono text-sm font-bold text-muted-foreground mt-1">
-          {index + 1}
+        {/* Image with number overlay / fallback */}
+        <div className="relative size-9 shrink-0 overflow-hidden rounded-lg bg-muted">
+          {exercise.imageUrl ? (
+            <img
+              src={exercise.imageUrl}
+              alt={exercise.name}
+              className="size-full object-cover"
+            />
+          ) : (
+            <div className="flex size-full items-center justify-center text-xs font-bold text-muted-foreground">
+              {index + 1}
+            </div>
+          )}
+          {exercise.imageUrl && (
+            <div className="absolute bottom-0 right-0 flex size-4 items-center justify-center rounded-tl bg-black/60 text-[9px] font-bold text-white">
+              {index + 1}
+            </div>
+          )}
         </div>
 
-        <div className="flex-1 min-w-0 space-y-1.5">
-          <div>
-            <p className="font-medium">{config.exercise.name}</p>
-            <p className="text-xs text-muted-foreground">
-              {config.exercise.primaryMuscleGroup.name}
-              {" \u00B7 "}
-              {formatEquipment(config.exercise.equipmentType)}
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline" className="text-xs gap-1">
-              <Flame className="size-3" />
-              {warmUp} warm-up + {working} working
-            </Badge>
-            {config.targetReps && (
-              <Badge variant="outline" className="text-xs gap-1">
-                <Target className="size-3" />
-                {config.targetReps} reps
-              </Badge>
-            )}
-            <Badge variant="outline" className="text-xs gap-1">
-              <Timer className="size-3" />
-              {formatRestTime(rest)}
-            </Badge>
-            {hasOverride && (
-              <Badge variant="secondary" className="text-xs gap-1">
-                <AlertCircle className="size-3" />
-                Custom
-              </Badge>
-            )}
-          </div>
+        {/* Name (clickable → modal) + meta */}
+        <div className="flex-1 min-w-0" onClick={(e) => e.stopPropagation()}>
+          <ExerciseInfoDialog exercise={exercise}>
+            <button
+              type="button"
+              className="text-sm font-semibold leading-tight truncate hover:underline text-left"
+            >
+              {exercise.name}
+            </button>
+          </ExerciseInfoDialog>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            {exercise.primaryMuscleGroup.name}
+            {" · "}
+            {formatEquipment(exercise.equipmentType)}
+          </p>
         </div>
 
-        <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-          <EditExerciseDialog
-            config={config}
+        {/* Set pills */}
+        <div className="flex items-center gap-0.5 shrink-0">
+          {config.sets.map((s) => (
+            <div
+              key={s.id}
+              className={`h-4 w-[5px] rounded-sm ${
+                s.setType === "WARM_UP"
+                  ? "bg-amber-300 dark:bg-amber-500"
+                  : "bg-blue-300 dark:bg-blue-500"
+              }`}
+            />
+          ))}
+          <span className="ml-1.5 text-[11px] text-muted-foreground whitespace-nowrap">
+            {warmUpCount > 0 && `${warmUpCount}W + `}
+            {workingCount}S
+          </span>
+        </div>
+
+        {/* Expand indicator */}
+        <ChevronRight
+          className={`size-4 text-muted-foreground/40 transition-transform duration-200 shrink-0 ${expanded ? "rotate-90" : ""}`}
+        />
+
+        {/* Delete */}
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          disabled={deleting}
+          className="text-muted-foreground/40 hover:text-destructive shrink-0"
+          onClick={async (e) => {
+            e.stopPropagation();
+            setDeleting(true);
+            await removeExerciseFromWorkout(config.id, programId, workoutId);
+          }}
+        >
+          <Trash2 className="size-3.5" />
+        </Button>
+      </div>
+
+      {/* Expanded sets */}
+      {expanded && (
+        <div className="border-t bg-muted/20 px-3 py-1.5">
+          <SetsEditor
+            sets={config.sets}
+            previousSets={previousSets}
+            exerciseConfigId={config.id}
             programId={programId}
             workoutId={workoutId}
-            defaults={defaults}
           />
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            disabled={deleting}
-            onClick={async () => {
-              setDeleting(true);
-              await removeExerciseFromWorkout(config.id, programId, workoutId);
-              setDeleting(false);
-            }}
-          >
-            <Trash2 className="size-3 text-destructive" />
-          </Button>
         </div>
-      </CardContent>
-    </Card>
+      )}
+    </div>
   );
 }
 
-function EditExerciseDialog({
-  config,
-  programId,
-  workoutId,
-  defaults,
+function ExerciseInfoDialog({
+  exercise,
+  children,
 }: {
-  config: ExerciseConfig;
-  programId: string;
-  workoutId: string;
-  defaults: ProgramDefaults;
+  exercise: ExerciseConfig["exercise"];
+  children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [useDefaultWarmUp, setUseDefaultWarmUp] = useState(
-    config.warmUpSets === null
-  );
-  const [useDefaultWorking, setUseDefaultWorking] = useState(
-    config.workingSets === null
-  );
-  const [useDefaultRest, setUseDefaultRest] = useState(
-    config.restSeconds === null
-  );
-  const [useDefaultWarmUpPct, setUseDefaultWarmUpPct] = useState(
-    config.warmUpPercent === null
-  );
-  const [warmUpPct, setWarmUpPct] = useState(
-    config.warmUpPercent !== null
-      ? Math.round(config.warmUpPercent * 100)
-      : Math.round(defaults.warmUpPercent * 100)
-  );
-
-  async function handleSubmit(formData: FormData) {
-    setPending(true);
-
-    if (useDefaultWarmUp) formData.delete("warmUpSets");
-    if (useDefaultWorking) formData.delete("workingSets");
-    if (useDefaultRest) formData.delete("restSeconds");
-    if (useDefaultWarmUpPct) {
-      formData.delete("warmUpPercent");
-    } else {
-      formData.set("warmUpPercent", warmUpPct.toString());
-    }
-
-    await updateWorkoutExercise(config.id, programId, workoutId, formData);
-    setPending(false);
-    setOpen(false);
-  }
-
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          <Button variant="ghost" size="icon-xs">
-            <Pencil className="size-3" />
-          </Button>
-        }
-      />
+    <Dialog>
+      <DialogTrigger nativeButton={false} render={<span />}>{children}</DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Edit {config.exercise.name}</DialogTitle>
+          <DialogTitle>{exercise.name}</DialogTitle>
           <DialogDescription>
-            Configure sets, reps, and rest for this exercise. Leave as default
-            to inherit program settings.
+            {exercise.primaryMuscleGroup.name}
+            {" · "}
+            {formatEquipment(exercise.equipmentType)}
           </DialogDescription>
         </DialogHeader>
-        <form action={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="edit-warmUpSets">Warm-up Sets</Label>
-              <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={useDefaultWarmUp}
-                  onChange={(e) => setUseDefaultWarmUp(e.target.checked)}
-                  className="rounded"
-                />
-                Use default ({defaults.warmUpSets})
-              </label>
-            </div>
-            <Input
-              id="edit-warmUpSets"
-              name="warmUpSets"
-              type="number"
-              min={0}
-              max={10}
-              defaultValue={config.warmUpSets ?? defaults.warmUpSets}
-              disabled={useDefaultWarmUp}
-              className="w-24"
+
+        {/* Image */}
+        {exercise.imageUrl ? (
+          <div className="overflow-hidden rounded-lg bg-muted">
+            <img
+              src={exercise.imageUrl}
+              alt={exercise.name}
+              className="w-full object-contain"
             />
           </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="edit-workingSets">Working Sets</Label>
-              <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={useDefaultWorking}
-                  onChange={(e) => setUseDefaultWorking(e.target.checked)}
-                  className="rounded"
-                />
-                Use default ({defaults.workingSets})
-              </label>
-            </div>
-            <Input
-              id="edit-workingSets"
-              name="workingSets"
-              type="number"
-              min={1}
-              max={20}
-              defaultValue={config.workingSets ?? defaults.workingSets}
-              disabled={useDefaultWorking}
-              className="w-24"
-            />
+        ) : (
+          <div className="flex aspect-video items-center justify-center rounded-lg bg-muted">
+            <Dumbbell className="size-12 text-muted-foreground/30" />
           </div>
+        )}
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Warm-up Weight %</Label>
-              <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={useDefaultWarmUpPct}
-                  onChange={(e) => setUseDefaultWarmUpPct(e.target.checked)}
-                  className="rounded"
-                />
-                Use default ({Math.round(defaults.warmUpPercent * 100)}%)
-              </label>
-            </div>
-            {!useDefaultWarmUpPct && (
-              <div className="space-y-1">
-                <Slider
-                  value={[warmUpPct]}
-                  onValueChange={(val) => {
-                      const arr = Array.isArray(val) ? val : [val];
-                      setWarmUpPct(arr[0]);
-                    }}
-                  min={0}
-                  max={100}
-                />
-                <p className="text-xs text-muted-foreground">{warmUpPct}%</p>
-              </div>
-            )}
-          </div>
+        {/* Description */}
+        {exercise.description && (
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            {exercise.description}
+          </p>
+        )}
 
-          <div className="space-y-2">
-            <Label htmlFor="edit-targetReps">Target Reps</Label>
-            <Input
-              id="edit-targetReps"
-              name="targetReps"
-              placeholder="e.g., 8-12"
-              defaultValue={config.targetReps ?? ""}
-            />
-          </div>
+        {/* Tags */}
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="secondary">
+            {exercise.primaryMuscleGroup.name}
+          </Badge>
+          <Badge variant="outline">
+            {formatEquipment(exercise.equipmentType)}
+          </Badge>
+        </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="edit-restSeconds">Rest (seconds)</Label>
-              <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={useDefaultRest}
-                  onChange={(e) => setUseDefaultRest(e.target.checked)}
-                  className="rounded"
-                />
-                Use default ({formatRestTime(defaults.restSeconds)})
-              </label>
-            </div>
-            <Input
-              id="edit-restSeconds"
-              name="restSeconds"
-              type="number"
-              min={0}
-              max={600}
-              step={5}
-              defaultValue={config.restSeconds ?? defaults.restSeconds}
-              disabled={useDefaultRest}
-              className="w-24"
-            />
-          </div>
-
-          <DialogFooter>
-            <Button type="submit" disabled={pending}>
-              {pending ? "Saving..." : "Save Changes"}
-            </Button>
-          </DialogFooter>
-        </form>
+        {/* Link to full detail page */}
+        <Link
+          href={`/exercises/${exercise.id}`}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+        >
+          View full details
+          <ExternalLink className="size-3.5" />
+        </Link>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function SetsEditor({
+  sets,
+  previousSets,
+  exerciseConfigId,
+  programId,
+  workoutId,
+}: {
+  sets: SetConfig[];
+  previousSets: PreviousSet[];
+  exerciseConfigId: string;
+  programId: string;
+  workoutId: string;
+}) {
+  const [adding, startAdding] = useTransition();
+  const lastSet = sets[sets.length - 1];
+  const lastRest = lastSet ? formatRestTime(lastSet.restSeconds) : "1:30";
+
+  return (
+    <div>
+      <Table>
+        <TableHeader>
+          <TableRow className="border-0 hover:bg-transparent">
+            <TableHead className="h-7 w-10 text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground px-1">
+              Set
+            </TableHead>
+            <TableHead className="h-7 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground px-1">
+              Previous
+            </TableHead>
+            <TableHead className="h-7 w-16 text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground px-1">
+              kg
+            </TableHead>
+            <TableHead className="h-7 w-14 text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground px-1">
+              Reps
+            </TableHead>
+            <TableHead className="h-7 w-16 text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground px-1">
+              Rest
+            </TableHead>
+            <TableHead className="h-7 w-7 px-0" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {sets.map((set, idx) => (
+            <SetRow
+              key={set.id}
+              set={set}
+              index={idx}
+              sets={sets}
+              previous={previousSets[idx]}
+              programId={programId}
+              workoutId={workoutId}
+            />
+          ))}
+        </TableBody>
+      </Table>
+
+      <button
+        type="button"
+        disabled={adding}
+        className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-border/60 bg-background py-2 text-xs font-medium text-muted-foreground hover:border-border hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-50"
+        onClick={() => {
+          startAdding(async () => {
+            await addSetToExercise(exerciseConfigId, programId, workoutId);
+          });
+        }}
+      >
+        <Plus className="size-3.5" />
+        Add Set ({lastRest})
+      </button>
+    </div>
+  );
+}
+
+function SetRow({
+  set,
+  index,
+  sets,
+  previous,
+  programId,
+  workoutId,
+}: {
+  set: SetConfig;
+  index: number;
+  sets: SetConfig[];
+  previous: PreviousSet | undefined;
+  programId: string;
+  workoutId: string;
+}) {
+  const [removing, startRemoving] = useTransition();
+  const [toggling, startToggling] = useTransition();
+  const isWarmup = set.setType === "WARM_UP";
+
+  const warmupIndex =
+    sets.slice(0, index).filter((s) => s.setType === "WARM_UP").length + 1;
+  const workingIndex =
+    sets.slice(0, index).filter((s) => s.setType === "WORKING").length + 1;
+  const label = isWarmup ? `W${warmupIndex}` : `S${workingIndex}`;
+
+  return (
+    <TableRow className="border-0 hover:bg-muted/30">
+      <TableCell className="px-1 py-1 text-center">
+        <button
+          type="button"
+          disabled={toggling}
+          title={`Click to switch to ${isWarmup ? "working" : "warm-up"} set`}
+          className="focus:outline-none"
+          onClick={() => {
+            startToggling(async () => {
+              await updateProgramSet(set.id, programId, workoutId, {
+                setType: isWarmup ? "WORKING" : "WARM_UP",
+              });
+            });
+          }}
+        >
+          <span
+            className={`inline-flex size-7 items-center justify-center rounded-md text-[10px] font-bold cursor-pointer select-none transition-colors ${
+              isWarmup
+                ? "bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/50 dark:text-amber-400 dark:hover:bg-amber-800/60"
+                : "bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/50 dark:text-blue-400 dark:hover:bg-blue-800/60"
+            }`}
+          >
+            {label}
+          </span>
+        </button>
+      </TableCell>
+
+      <TableCell className="px-1 py-1">
+        <span className="text-xs text-muted-foreground/50">
+          {formatPrevious(previous)}
+        </span>
+      </TableCell>
+
+      <TableCell className="px-1 py-1">
+        <SetInput
+          defaultValue={set.targetWeight?.toString() ?? ""}
+          placeholder="—"
+          onCommit={(val) => {
+            const weight = val ? parseFloat(val) : null;
+            if (val && isNaN(weight!)) return;
+            updateProgramSet(set.id, programId, workoutId, {
+              targetWeight: weight,
+            });
+          }}
+        />
+      </TableCell>
+
+      <TableCell className="px-1 py-1">
+        <SetInput
+          defaultValue={set.targetReps ?? ""}
+          placeholder="—"
+          onCommit={(val) => {
+            updateProgramSet(set.id, programId, workoutId, {
+              targetReps: val,
+            });
+          }}
+        />
+      </TableCell>
+
+      <TableCell className="px-1 py-1">
+        <RestChip
+          restSeconds={set.restSeconds}
+          onCommit={(secs) => {
+            updateProgramSet(set.id, programId, workoutId, {
+              restSeconds: secs,
+            });
+          }}
+        />
+      </TableCell>
+
+      <TableCell className="px-0 py-1">
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          disabled={removing}
+          className="text-muted-foreground/40 hover:text-destructive"
+          onClick={() => {
+            startRemoving(async () => {
+              await removeProgramSet(set.id, programId, workoutId);
+            });
+          }}
+        >
+          <Minus className="size-3.5" />
+        </Button>
+      </TableCell>
+    </TableRow>
+  );
+}
+
+function RestChip({
+  restSeconds,
+  onCommit,
+}: {
+  restSeconds: number;
+  onCommit: (seconds: number) => void;
+}) {
+  const [value, setValue] = useState(formatRestTime(restSeconds));
+
+  return (
+    <div className="inline-flex w-full items-center justify-center gap-1 rounded-full bg-blue-50 px-1.5 py-0.5 text-blue-500 transition-colors hover:bg-blue-100 dark:bg-blue-950/50 dark:text-blue-400 dark:hover:bg-blue-900/50">
+      <Clock className="size-3 shrink-0" />
+      <input
+        value={value}
+        className="w-8 bg-transparent text-center text-[11px] font-semibold text-inherit outline-none"
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => {
+          const formatted = autoFormatRest(value);
+          setValue(formatted);
+          const secs = parseRestTime(value);
+          if (secs !== null && secs !== restSeconds) {
+            onCommit(secs);
+          }
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.currentTarget.blur();
+          }
+        }}
+      />
+    </div>
+  );
+}
+
+function SetInput({
+  defaultValue,
+  placeholder,
+  onCommit,
+}: {
+  defaultValue: string;
+  placeholder?: string;
+  onCommit: (value: string) => void;
+}) {
+  const [value, setValue] = useState(defaultValue);
+
+  return (
+    <input
+      value={value}
+      placeholder={placeholder}
+      className="h-7 w-full rounded-md border border-input bg-background px-2 text-center text-sm font-medium text-foreground outline-none hover:border-ring/50 focus:border-ring focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/30"
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => {
+        if (value !== defaultValue) {
+          onCommit(value);
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.currentTarget.blur();
+        }
+      }}
+    />
   );
 }

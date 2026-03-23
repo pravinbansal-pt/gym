@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Exercise List Mockup</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8f8f8; padding: 32px; color: #111; }
+
+  .container { max-width: 640px; margin: 0 auto; }
+
+  h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  h2 .count { font-size: 12px; font-weight: 600; background: #f0f0f0; color: #666; padding: 2px 8px; border-radius: 10px; }
+
+  /* ─── Exercise Card ─── */
+  .exercise-card {
+    background: #fff;
+    border: 1px solid #e5e5e5;
+    border-radius: 10px;
+    margin-bottom: 6px;
+    overflow: hidden;
+    transition: box-shadow 0.15s;
+  }
+  .exercise-card:hover { box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+
+  /* Header row */
+  .exercise-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .order-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .order-buttons button {
+    background: none; border: none; cursor: pointer; padding: 0; line-height: 1;
+    color: #bbb; font-size: 14px;
+  }
+  .order-buttons button:hover { color: #666; }
+  .order-buttons button:disabled { opacity: 0.3; cursor: default; }
+
+  .exercise-num {
+    width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: #f0f0f0;
+    font-size: 13px; font-weight: 700; color: #555;
+    flex-shrink: 0;
+  }
+
+  .exercise-info { flex: 1; min-width: 0; }
+  .exercise-name { font-size: 14px; font-weight: 600; line-height: 1.3; }
+  .exercise-meta { font-size: 11px; color: #999; margin-top: 1px; }
+
+  /* Set summary pills shown inline on the header */
+  .set-pills {
+    display: flex;
+    gap: 3px;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .set-pill {
+    width: 7px; height: 18px;
+    border-radius: 3px;
+  }
+  .set-pill.warmup { background: #fde68a; }
+  .set-pill.working { background: #93c5fd; }
+
+  .set-summary {
+    font-size: 11px;
+    color: #888;
+    margin-left: 4px;
+    white-space: nowrap;
+  }
+
+  .expand-icon {
+    color: #ccc;
+    font-size: 16px;
+    transition: transform 0.2s;
+    flex-shrink: 0;
+    width: 20px;
+    text-align: center;
+  }
+  .exercise-card.expanded .expand-icon { transform: rotate(180deg); }
+
+  .delete-btn {
+    background: none; border: none; cursor: pointer; padding: 4px;
+    color: #ddd; font-size: 14px; flex-shrink: 0;
+    transition: color 0.15s;
+  }
+  .delete-btn:hover { color: #ef4444; }
+
+  /* ─── Expanded Sets ─── */
+  .sets-panel {
+    display: none;
+    border-top: 1px solid #f0f0f0;
+    background: #fafafa;
+    padding: 8px 12px 10px;
+  }
+  .exercise-card.expanded .sets-panel { display: block; }
+
+  /* Sets table */
+  .sets-grid {
+    display: grid;
+    grid-template-columns: 40px 1fr 1fr 24px;
+    gap: 0;
+    align-items: center;
+  }
+  .sets-header {
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #aaa;
+    padding: 0 0 4px;
+  }
+
+  .set-row {
+    display: contents;
+  }
+  .set-row > * {
+    padding: 3px 0;
+  }
+
+  .set-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px; height: 22px;
+    border-radius: 5px;
+    font-size: 10px; font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s;
+    border: none;
+  }
+  .set-badge.warmup { background: #fef3c7; color: #b45309; }
+  .set-badge.warmup:hover { background: #fde68a; }
+  .set-badge.working { background: #dbeafe; color: #1d4ed8; }
+  .set-badge.working:hover { background: #bfdbfe; }
+
+  .set-input {
+    width: 56px; height: 24px;
+    border: 1px solid #e5e5e5;
+    border-radius: 5px;
+    background: #fff;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 500;
+    color: #333;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .set-input:hover { border-color: #ccc; }
+  .set-input:focus { border-color: #93c5fd; box-shadow: 0 0 0 2px rgba(147,197,253,0.25); }
+  .set-input::placeholder { color: #ccc; }
+
+  .unit-label {
+    font-size: 11px;
+    color: #aaa;
+    margin-left: 3px;
+  }
+
+  .weight-cell {
+    display: flex;
+    align-items: center;
+  }
+
+  .remove-set-btn {
+    background: none; border: none; cursor: pointer;
+    color: #ddd; font-size: 12px; padding: 2px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 4px;
+    transition: all 0.15s;
+  }
+  .remove-set-btn:hover { color: #ef4444; background: #fef2f2; }
+
+  /* Rest divider */
+  .rest-row {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+  }
+  .rest-line { flex: 1; height: 1px; background: #eee; }
+  .rest-label {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    color: #bbb;
+  }
+  .rest-label svg { width: 10px; height: 10px; }
+  .rest-value {
+    width: 36px;
+    background: none; border: none; border-bottom: 1px solid transparent;
+    text-align: center;
+    font-size: 10px; color: #bbb;
+    outline: none;
+    font-family: inherit;
+  }
+  .rest-value:hover { border-bottom-color: #ccc; }
+  .rest-value:focus { border-bottom-color: #93c5fd; color: #666; }
+
+  /* Add set */
+  .add-set-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    margin-top: 6px;
+    padding: 4px 0;
+    width: 100%;
+    background: none; border: none; cursor: pointer;
+    font-size: 11px;
+    color: #bbb;
+    font-weight: 500;
+    border-radius: 6px;
+    transition: all 0.15s;
+  }
+  .add-set-btn:hover { color: #888; background: #f0f0f0; }
+
+  /* ─── Small SVG icons ─── */
+  .icon { width: 14px; height: 14px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h2>Exercises <span class="count">3</span></h2>
+
+  <!-- Exercise 1: collapsed -->
+  <div class="exercise-card">
+    <div class="exercise-header" onclick="this.parentElement.classList.toggle('expanded')">
+      <div class="order-buttons">
+        <button disabled>&#8249;</button>
+        <button>&#8250;</button>
+      </div>
+      <div class="exercise-num">1</div>
+      <div class="exercise-info">
+        <div class="exercise-name">Hack Squat</div>
+        <div class="exercise-meta">Quadriceps · Machine</div>
+      </div>
+      <div class="set-pills">
+        <div class="set-pill warmup"></div>
+        <div class="set-pill working"></div>
+        <div class="set-pill working"></div>
+        <div class="set-pill working"></div>
+        <span class="set-summary">1W + 3S</span>
+      </div>
+      <div class="expand-icon">&#8250;</div>
+      <button class="delete-btn" onclick="event.stopPropagation()">&#x2715;</button>
+    </div>
+    <div class="sets-panel">
+      <div class="sets-grid">
+        <div class="sets-header"></div>
+        <div class="sets-header">Weight</div>
+        <div class="sets-header">Reps</div>
+        <div></div>
+
+        <!-- W1 -->
+        <div class="set-row">
+          <div><button class="set-badge warmup">W1</button></div>
+          <div class="weight-cell"><input class="set-input" value="20"><span class="unit-label">kg</span></div>
+          <div><input class="set-input" value="10"></div>
+          <div><button class="remove-set-btn">&#x2715;</button></div>
+        </div>
+
+        <!-- Rest -->
+        <div class="rest-row">
+          <div class="rest-line"></div>
+          <div class="rest-label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <input class="rest-value" value="1:30">
+            rest
+          </div>
+          <div class="rest-line"></div>
+        </div>
+
+        <!-- S1 -->
+        <div class="set-row">
+          <div><button class="set-badge working">S1</button></div>
+          <div class="weight-cell"><input class="set-input" value="30"><span class="unit-label">kg</span></div>
+          <div><input class="set-input" value="8"></div>
+          <div><button class="remove-set-btn">&#x2715;</button></div>
+        </div>
+
+        <div class="rest-row">
+          <div class="rest-line"></div>
+          <div class="rest-label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <input class="rest-value" value="2:30">
+            rest
+          </div>
+          <div class="rest-line"></div>
+        </div>
+
+        <!-- S2 -->
+        <div class="set-row">
+          <div><button class="set-badge working">S2</button></div>
+          <div class="weight-cell"><input class="set-input" value="30"><span class="unit-label">kg</span></div>
+          <div><input class="set-input" value="8"></div>
+          <div><button class="remove-set-btn">&#x2715;</button></div>
+        </div>
+
+        <div class="rest-row">
+          <div class="rest-line"></div>
+          <div class="rest-label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <input class="rest-value" value="2:30">
+            rest
+          </div>
+          <div class="rest-line"></div>
+        </div>
+
+        <!-- S3 -->
+        <div class="set-row">
+          <div><button class="set-badge working">S3</button></div>
+          <div class="weight-cell"><input class="set-input" value="30"><span class="unit-label">kg</span></div>
+          <div><input class="set-input" value="8"></div>
+          <div><button class="remove-set-btn">&#x2715;</button></div>
+        </div>
+      </div>
+      <button class="add-set-btn">+ Add Set</button>
+    </div>
+  </div>
+
+  <!-- Exercise 2: collapsed -->
+  <div class="exercise-card">
+    <div class="exercise-header" onclick="this.parentElement.classList.toggle('expanded')">
+      <div class="order-buttons">
+        <button>&#8249;</button>
+        <button>&#8250;</button>
+      </div>
+      <div class="exercise-num">2</div>
+      <div class="exercise-info">
+        <div class="exercise-name">Leg Extension</div>
+        <div class="exercise-meta">Quadriceps · Machine</div>
+      </div>
+      <div class="set-pills">
+        <div class="set-pill warmup"></div>
+        <div class="set-pill working"></div>
+        <div class="set-pill working"></div>
+        <span class="set-summary">1W + 2S</span>
+      </div>
+      <div class="expand-icon">&#8250;</div>
+      <button class="delete-btn" onclick="event.stopPropagation()">&#x2715;</button>
+    </div>
+    <div class="sets-panel">
+      <div class="sets-grid">
+        <div class="sets-header"></div>
+        <div class="sets-header">Weight</div>
+        <div class="sets-header">Reps</div>
+        <div></div>
+
+        <div class="set-row">
+          <div><button class="set-badge warmup">W1</button></div>
+          <div class="weight-cell"><input class="set-input" placeholder="—"><span class="unit-label">kg</span></div>
+          <div><input class="set-input" value="10"></div>
+          <div><button class="remove-set-btn">&#x2715;</button></div>
+        </div>
+
+        <div class="rest-row">
+          <div class="rest-line"></div>
+          <div class="rest-label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <input class="rest-value" value="1:00">
+            rest
+          </div>
+          <div class="rest-line"></div>
+        </div>
+
+        <div class="set-row">
+          <div><button class="set-badge working">S1</button></div>
+          <div class="weight-cell"><input class="set-input" placeholder="—"><span class="unit-label">kg</span></div>
+          <div><input class="set-input" placeholder="—"></div>
+          <div><button class="remove-set-btn">&#x2715;</button></div>
+        </div>
+
+        <div class="rest-row">
+          <div class="rest-line"></div>
+          <div class="rest-label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <input class="rest-value" value="2:00">
+            rest
+          </div>
+          <div class="rest-line"></div>
+        </div>
+
+        <div class="set-row">
+          <div><button class="set-badge working">S2</button></div>
+          <div class="weight-cell"><input class="set-input" placeholder="—"><span class="unit-label">kg</span></div>
+          <div><input class="set-input" placeholder="—"></div>
+          <div><button class="remove-set-btn">&#x2715;</button></div>
+        </div>
+      </div>
+      <button class="add-set-btn">+ Add Set</button>
+    </div>
+  </div>
+
+  <!-- Exercise 3: collapsed -->
+  <div class="exercise-card">
+    <div class="exercise-header" onclick="this.parentElement.classList.toggle('expanded')">
+      <div class="order-buttons">
+        <button>&#8249;</button>
+        <button disabled>&#8250;</button>
+      </div>
+      <div class="exercise-num">3</div>
+      <div class="exercise-info">
+        <div class="exercise-name">Leg Curl (Seated)</div>
+        <div class="exercise-meta">Hamstrings · Machine</div>
+      </div>
+      <div class="set-pills">
+        <div class="set-pill warmup"></div>
+        <div class="set-pill working"></div>
+        <div class="set-pill working"></div>
+        <span class="set-summary">1W + 2S</span>
+      </div>
+      <div class="expand-icon">&#8250;</div>
+      <button class="delete-btn" onclick="event.stopPropagation()">&#x2715;</button>
+    </div>
+    <div class="sets-panel">
+      <div class="sets-grid">
+        <div class="sets-header"></div>
+        <div class="sets-header">Weight</div>
+        <div class="sets-header">Reps</div>
+        <div></div>
+
+        <div class="set-row">
+          <div><button class="set-badge warmup">W1</button></div>
+          <div class="weight-cell"><input class="set-input" value="15"><span class="unit-label">kg</span></div>
+          <div><input class="set-input" value="10"></div>
+          <div><button class="remove-set-btn">&#x2715;</button></div>
+        </div>
+
+        <div class="rest-row">
+          <div class="rest-line"></div>
+          <div class="rest-label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <input class="rest-value" value="1:00">
+            rest
+          </div>
+          <div class="rest-line"></div>
+        </div>
+
+        <div class="set-row">
+          <div><button class="set-badge working">S1</button></div>
+          <div class="weight-cell"><input class="set-input" value="25"><span class="unit-label">kg</span></div>
+          <div><input class="set-input" value="12"></div>
+          <div><button class="remove-set-btn">&#x2715;</button></div>
+        </div>
+
+        <div class="rest-row">
+          <div class="rest-line"></div>
+          <div class="rest-label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <input class="rest-value" value="2:00">
+            rest
+          </div>
+          <div class="rest-line"></div>
+        </div>
+
+        <div class="set-row">
+          <div><button class="set-badge working">S2</button></div>
+          <div class="weight-cell"><input class="set-input" value="25"><span class="unit-label">kg</span></div>
+          <div><input class="set-input" value="12"></div>
+          <div><button class="remove-set-btn">&#x2715;</button></div>
+        </div>
+      </div>
+      <button class="add-set-btn">+ Add Set</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Rotate the chevron icon for expanded state
+  const style = document.createElement('style');
+  style.textContent = `.exercise-card.expanded .expand-icon { transform: rotate(90deg); }`;
+  document.head.appendChild(style);
+</script>
+</body>
+</html>

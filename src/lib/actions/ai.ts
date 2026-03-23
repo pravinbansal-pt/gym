@@ -2,6 +2,13 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "@/lib/db";
+import { getSession } from "@/lib/get-session";
+
+async function requireAuth() {
+  const session = await getSession();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  return session.user.id;
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -59,6 +66,7 @@ export async function generateWorkout(
   prompt: string
 ): Promise<GenerateWorkoutResult | AIError> {
   try {
+    await requireAuth();
     const client = getAnthropicClient();
 
     // Fetch all exercises from the database with their muscle groups
@@ -200,6 +208,7 @@ export async function saveWorkoutAsSession(
   workout: GeneratedWorkout
 ): Promise<{ success: true; data: { id: string } } | AIError> {
   try {
+    await requireAuth();
     const session = await db.workoutSession.create({
       data: {
         name: workout.name,
@@ -248,6 +257,7 @@ export async function saveWorkoutToProgram(
   programId: string
 ): Promise<{ success: true; data: { id: string } } | AIError> {
   try {
+    await requireAuth();
     // Get the next order index for workouts in this program
     const maxOrder = await db.programWorkout.aggregate({
       where: { programId },
@@ -312,6 +322,7 @@ export async function generateExercises(
   prompt: string
 ): Promise<GenerateExercisesResult | AIError> {
   try {
+    await requireAuth();
     const client = getAnthropicClient();
 
     // Fetch existing exercises so AI doesn't suggest duplicates
@@ -450,6 +461,7 @@ export async function saveGeneratedExercises(
   { success: true; data: { count: number } } | AIError
 > {
   try {
+    await requireAuth();
     // Look up muscle group IDs
     const muscleGroups = await db.muscleGroup.findMany();
     const mgMap = new Map(muscleGroups.map((mg) => [mg.name, mg.id]));

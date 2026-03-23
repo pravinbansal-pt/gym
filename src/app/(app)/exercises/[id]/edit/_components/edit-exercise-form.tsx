@@ -49,6 +49,7 @@ interface Exercise {
   name: string;
   description: string | null;
   equipmentType: string;
+  weightUnit: string | null;
   primaryMuscleGroupId: string;
   primaryMuscleGroup: {
     id: string;
@@ -75,6 +76,9 @@ export function EditExerciseForm({
   const [isSaving, startSaveTransition] = useTransition();
   const [isDeleting, startDeleteTransition] = useTransition();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [muscleGroupId, setMuscleGroupId] = useState(exercise.primaryMuscleGroupId);
+  const [equipmentType, setEquipmentType] = useState(exercise.equipmentType);
+  const [weightUnit, setWeightUnit] = useState(exercise.weightUnit ?? "DEFAULT");
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -136,11 +140,14 @@ export function EditExerciseForm({
                 </Label>
                 <Select
                   name="primaryMuscleGroupId"
-                  defaultValue={exercise.primaryMuscleGroupId}
+                  value={muscleGroupId}
+                  onValueChange={(v) => setMuscleGroupId(v ?? exercise.primaryMuscleGroupId)}
                   required
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select muscle group" />
+                    <SelectValue placeholder="Select muscle group">
+                      {muscleGroups.find((mg) => mg.id === muscleGroupId)?.name ?? "Select muscle group"}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {muscleGroups.map((mg) => (
@@ -156,10 +163,13 @@ export function EditExerciseForm({
                 <Label htmlFor="equipmentType">Equipment Type</Label>
                 <Select
                   name="equipmentType"
-                  defaultValue={exercise.equipmentType}
+                  value={equipmentType}
+                  onValueChange={(v) => setEquipmentType(v ?? exercise.equipmentType)}
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select equipment" />
+                    <SelectValue placeholder="Select equipment">
+                      {EQUIPMENT_OPTIONS.find((eq) => eq.value === equipmentType)?.label ?? "Select equipment"}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {EQUIPMENT_OPTIONS.map((eq) => (
@@ -170,6 +180,26 @@ export function EditExerciseForm({
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="weightUnit">Weight Unit</Label>
+              <Select
+                name="weightUnit"
+                value={weightUnit}
+                onValueChange={(v) => setWeightUnit(v ?? "DEFAULT")}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select weight unit">
+                    {weightUnit === "KG" ? "Kilograms (kg)" : weightUnit === "LBS" ? "Pounds (lbs)" : "Use default"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="DEFAULT">Use default</SelectItem>
+                  <SelectItem value="KG">Kilograms (kg)</SelectItem>
+                  <SelectItem value="LBS">Pounds (lbs)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </CardContent>
           <CardFooter className="flex justify-between">

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { SetType } from "@/generated/prisma/client";
+import { getSession } from "@/lib/get-session";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -118,6 +119,11 @@ async function findBestExerciseMatch(
 
 export async function POST(request: NextRequest) {
   try {
+    const authSession = await getSession();
+    if (!authSession?.user?.id) {
+      return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
+    }
+
     const body = (await request.json()) as LogWorkoutPayload;
 
     // Validate payload

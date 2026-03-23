@@ -1,75 +1,130 @@
 "use client";
 
-import { useState } from "react";
-import {
-  Plus,
-  Search,
-  Dumbbell,
-} from "lucide-react";
+import { useMemo, useState, useTransition } from "react";
+import { Plus, Search, Dumbbell } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Slider } from "@/components/ui/slider";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { addExerciseToWorkout } from "../../../../_actions";
+import { AddExerciseDialog } from "@/app/(app)/exercises/_components/add-exercise-dialog";
 
 type Exercise = {
   id: string;
   name: string;
   equipmentType: string;
-  primaryMuscleGroup: { name: string };
+  primaryMuscleGroup: { id: string; name: string };
 };
 
-type Defaults = {
-  warmUpSets: number;
-  workingSets: number;
-  warmUpPercent: number;
-  restSeconds: number;
+type MuscleGroup = {
+  id: string;
+  name: string;
+  displayOrder: number;
 };
+
+const EQUIPMENT_OPTIONS = [
+  { value: "BARBELL", label: "Barbell" },
+  { value: "DUMBBELL", label: "Dumbbell" },
+  { value: "MACHINE", label: "Machine" },
+  { value: "CABLE", label: "Cable" },
+  { value: "BODYWEIGHT", label: "Bodyweight" },
+  { value: "SMITH_MACHINE", label: "Smith Machine" },
+  { value: "EZ_BAR", label: "EZ Bar" },
+  { value: "KETTLEBELL", label: "Kettlebell" },
+  { value: "RESISTANCE_BAND", label: "Band" },
+  { value: "OTHER", label: "Other" },
+] as const;
 
 function formatEquipment(type: string): string {
-  return type
-    .split("_")
-    .map((w) => w[0] + w.slice(1).toLowerCase())
-    .join(" ");
+  return EQUIPMENT_OPTIONS.find((o) => o.value === type)?.label ?? type;
 }
 
 export function AddExercise({
   availableExercises,
+  muscleGroups,
   programId,
   workoutId,
-  defaults,
 }: {
   availableExercises: Exercise[];
+  muscleGroups: MuscleGroup[];
   programId: string;
   workoutId: string;
-  defaults: Defaults;
 }) {
   const [open, setOpen] = useState(false);
-  const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(
-    null
-  );
+  const [search, setSearch] = useState("");
+  const [muscleFilter, setMuscleFilter] = useState("");
+  const [equipmentFilter, setEquipmentFilter] = useState("");
+  const [adding, startAdding] = useTransition();
+  const [createOpen, setCreateOpen] = useState(false);
+
+  // Only show equipment types that exist in the available exercises
+  const availableEquipmentTypes = useMemo(() => {
+    const types = new Set(availableExercises.map((e) => e.equipmentType));
+    return EQUIPMENT_OPTIONS.filter((o) => types.has(o.value));
+  }, [availableExercises]);
+
+  // Only show muscle groups that exist in the available exercises
+  const availableMuscleGroups = useMemo(() => {
+    const ids = new Set(availableExercises.map((e) => e.primaryMuscleGroup.id));
+    return muscleGroups.filter((mg) => ids.has(mg.id));
+  }, [availableExercises, muscleGroups]);
+
+  const filtered = useMemo(() => {
+    let result = availableExercises;
+    if (search) {
+      const q = search.toLowerCase();
+      result = result.filter(
+        (e) =>
+          e.name.toLowerCase().includes(q) ||
+          e.primaryMuscleGroup.name.toLowerCase().includes(q)
+      );
+    }
+    if (muscleFilter) {
+      result = result.filter((e) => e.primaryMuscleGroup.id === muscleFilter);
+    }
+    if (equipmentFilter) {
+      result = result.filter((e) => e.equipmentType === equipmentFilter);
+    }
+    return result;
+  }, [availableExercises, search, muscleFilter, equipmentFilter]);
+
+  const grouped = filtered.reduce<Record<string, Exercise[]>>((acc, exercise) => {
+    const group = exercise.primaryMuscleGroup.name;
+    if (!acc[group]) acc[group] = [];
+    acc[group].push(exercise);
+    return acc;
+  }, {});
+
+  function handleSelect(exercise: Exercise) {
+    startAdding(async () => {
+      await addExerciseToWorkout(workoutId, programId, exercise.id);
+      setOpen(false);
+      resetFilters();
+    });
+  }
+
+  function resetFilters() {
+    setSearch("");
+    setMuscleFilter("");
+    setEquipmentFilter("");
+  }
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-xl font-semibold tracking-tight">Add Exercise</h2>
-      <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setSelectedExercise(null); }}>
+    <div>
+      <Dialog
+        open={open}
+        onOpenChange={(v) => {
+          setOpen(v);
+          if (!v) resetFilters();
+        }}
+      >
         <DialogTrigger
           render={
             <Button variant="outline" className="w-full border-dashed h-12">
@@ -79,314 +134,162 @@ export function AddExercise({
           }
         />
         <DialogContent className="sm:max-w-lg">
-          {!selectedExercise ? (
-            <ExercisePicker
-              exercises={availableExercises}
-              onSelect={setSelectedExercise}
+          <DialogHeader>
+            <DialogTitle>Select Exercise</DialogTitle>
+            <DialogDescription>
+              Choose an exercise to add. Default sets will be created
+              automatically &mdash; you can configure them inline after adding.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search exercises..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
             />
-          ) : (
-            <ExerciseConfigForm
-              exercise={selectedExercise}
-              programId={programId}
-              workoutId={workoutId}
-              defaults={defaults}
-              onBack={() => setSelectedExercise(null)}
-              onDone={() => {
-                setOpen(false);
-                setSelectedExercise(null);
-              }}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
-function ExercisePicker({
-  exercises,
-  onSelect,
-}: {
-  exercises: Exercise[];
-  onSelect: (exercise: Exercise) => void;
-}) {
-  const [search, setSearch] = useState("");
-
-  const filtered = exercises.filter(
-    (e) =>
-      e.name.toLowerCase().includes(search.toLowerCase()) ||
-      e.primaryMuscleGroup.name
-        .toLowerCase()
-        .includes(search.toLowerCase())
-  );
-
-  // Group by muscle group
-  const grouped = filtered.reduce<Record<string, Exercise[]>>(
-    (acc, exercise) => {
-      const group = exercise.primaryMuscleGroup.name;
-      if (!acc[group]) acc[group] = [];
-      acc[group].push(exercise);
-      return acc;
-    },
-    {}
-  );
-
-  return (
-    <>
-      <DialogHeader>
-        <DialogTitle>Select Exercise</DialogTitle>
-        <DialogDescription>
-          Choose an exercise from your library to add to this workout.
-        </DialogDescription>
-      </DialogHeader>
-      <div className="relative">
-        <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Search exercises..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
-        />
-      </div>
-      <ScrollArea className="max-h-80">
-        {Object.keys(grouped).length === 0 ? (
-          <div className="flex flex-col items-center py-8 text-center">
-            <Dumbbell className="size-8 text-muted-foreground" />
-            <p className="mt-2 text-sm text-muted-foreground">
-              {exercises.length === 0
-                ? "All exercises have been added to this workout, or the library is empty."
-                : "No exercises match your search."}
-            </p>
           </div>
-        ) : (
-          <div className="space-y-3">
-            {Object.entries(grouped).map(([groupName, groupExercises]) => (
-              <div key={groupName}>
-                <p className="mb-1 px-1 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  {groupName}
-                </p>
-                <div className="space-y-0.5">
-                  {groupExercises.map((exercise) => (
-                    <button
-                      key={exercise.id}
-                      type="button"
-                      onClick={() => onSelect(exercise)}
-                      className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-muted"
-                    >
-                      <div className="flex size-8 items-center justify-center rounded-md bg-muted">
-                        <Dumbbell className="size-4 text-muted-foreground" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">
-                          {exercise.name}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {formatEquipment(exercise.equipmentType)}
-                        </p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
+
+          {/* Muscle group filter */}
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => setMuscleFilter("")}
+              className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                !muscleFilter
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+              }`}
+            >
+              All Muscles
+            </button>
+            {availableMuscleGroups.map((mg) => (
+              <button
+                key={mg.id}
+                type="button"
+                onClick={() =>
+                  setMuscleFilter(muscleFilter === mg.id ? "" : mg.id)
+                }
+                className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                  muscleFilter === mg.id
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                }`}
+              >
+                {mg.name}
+              </button>
             ))}
           </div>
-        )}
-      </ScrollArea>
-    </>
-  );
-}
 
-function ExerciseConfigForm({
-  exercise,
-  programId,
-  workoutId,
-  defaults,
-  onBack,
-  onDone,
-}: {
-  exercise: Exercise;
-  programId: string;
-  workoutId: string;
-  defaults: Defaults;
-  onBack: () => void;
-  onDone: () => void;
-}) {
-  const [pending, setPending] = useState(false);
-  const [useDefaultWarmUp, setUseDefaultWarmUp] = useState(true);
-  const [useDefaultWorking, setUseDefaultWorking] = useState(true);
-  const [useDefaultRest, setUseDefaultRest] = useState(true);
-  const [useDefaultWarmUpPct, setUseDefaultWarmUpPct] = useState(true);
-  const [warmUpPct, setWarmUpPct] = useState(defaults.warmUpPercent);
+          {/* Equipment type filter */}
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => setEquipmentFilter("")}
+              className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                !equipmentFilter
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+              }`}
+            >
+              All Equipment
+            </button>
+            {availableEquipmentTypes.map((eq) => (
+              <button
+                key={eq.value}
+                type="button"
+                onClick={() =>
+                  setEquipmentFilter(
+                    equipmentFilter === eq.value ? "" : eq.value
+                  )
+                }
+                className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                  equipmentFilter === eq.value
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                }`}
+              >
+                {eq.label}
+              </button>
+            ))}
+          </div>
 
-  async function handleSubmit(formData: FormData) {
-    setPending(true);
-    formData.set("exerciseId", exercise.id);
+          <ScrollArea className="max-h-64">
+            {Object.keys(grouped).length === 0 ? (
+              <div className="flex flex-col items-center py-8 text-center">
+                <Dumbbell className="size-8 text-muted-foreground" />
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {availableExercises.length === 0
+                    ? "All exercises have been added to this workout, or the library is empty."
+                    : "No exercises match your filters."}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {Object.entries(grouped).map(([groupName, groupExercises]) => (
+                  <div key={groupName}>
+                    <p className="mb-1 px-1 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      {groupName}
+                    </p>
+                    <div className="space-y-0.5">
+                      {groupExercises.map((exercise) => (
+                        <button
+                          key={exercise.id}
+                          type="button"
+                          disabled={adding}
+                          onClick={() => handleSelect(exercise)}
+                          className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-muted disabled:opacity-50"
+                        >
+                          <div className="flex size-8 items-center justify-center rounded-md bg-muted">
+                            <Dumbbell className="size-4 text-muted-foreground" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">
+                              {exercise.name}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {formatEquipment(exercise.equipmentType)}
+                            </p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
 
-    if (useDefaultWarmUp) formData.delete("warmUpSets");
-    if (useDefaultWorking) formData.delete("workingSets");
-    if (useDefaultRest) formData.delete("restSeconds");
-    if (useDefaultWarmUpPct) {
-      formData.delete("warmUpPercent");
-    } else {
-      formData.set("warmUpPercent", warmUpPct.toString());
-    }
-
-    await addExerciseToWorkout(workoutId, programId, formData);
-    setPending(false);
-    onDone();
-  }
-
-  return (
-    <>
-      <DialogHeader>
-        <DialogTitle>Configure {exercise.name}</DialogTitle>
-        <DialogDescription>
-          Set up this exercise for your workout. Leave settings as default to
-          inherit from program defaults.
-        </DialogDescription>
-      </DialogHeader>
-      <form action={handleSubmit} className="space-y-4">
-        <Card size="sm">
-          <CardContent className="flex items-center gap-3">
-            <div className="flex size-8 items-center justify-center rounded-md bg-muted">
-              <Dumbbell className="size-4 text-muted-foreground" />
+          {/* Create new exercise */}
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              resetFilters();
+              setCreateOpen(true);
+            }}
+            className="flex w-full items-center gap-3 rounded-lg border border-dashed px-3 py-2.5 text-left transition-colors hover:bg-muted"
+          >
+            <div className="flex size-8 items-center justify-center rounded-md bg-primary/10">
+              <Plus className="size-4 text-primary" />
             </div>
-            <div>
-              <p className="font-medium">{exercise.name}</p>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium">Create New Exercise</p>
               <p className="text-xs text-muted-foreground">
-                {exercise.primaryMuscleGroup.name}
-                {" \u00B7 "}
-                {formatEquipment(exercise.equipmentType)}
+                Can&apos;t find what you need? Add it to your library.
               </p>
             </div>
-          </CardContent>
-        </Card>
+          </button>
+        </DialogContent>
+      </Dialog>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="add-warmUpSets">Warm-up Sets</Label>
-              <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={useDefaultWarmUp}
-                  onChange={(e) => setUseDefaultWarmUp(e.target.checked)}
-                  className="rounded"
-                />
-                Default ({defaults.warmUpSets})
-              </label>
-            </div>
-            <Input
-              id="add-warmUpSets"
-              name="warmUpSets"
-              type="number"
-              min={0}
-              max={10}
-              defaultValue={defaults.warmUpSets}
-              disabled={useDefaultWarmUp}
-              className="w-24"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="add-workingSets">Working Sets</Label>
-              <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={useDefaultWorking}
-                  onChange={(e) => setUseDefaultWorking(e.target.checked)}
-                  className="rounded"
-                />
-                Default ({defaults.workingSets})
-              </label>
-            </div>
-            <Input
-              id="add-workingSets"
-              name="workingSets"
-              type="number"
-              min={1}
-              max={20}
-              defaultValue={defaults.workingSets}
-              disabled={useDefaultWorking}
-              className="w-24"
-            />
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <Label>Warm-up Weight %</Label>
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={useDefaultWarmUpPct}
-                onChange={(e) => setUseDefaultWarmUpPct(e.target.checked)}
-                className="rounded"
-              />
-              Default ({defaults.warmUpPercent}%)
-            </label>
-          </div>
-          {!useDefaultWarmUpPct && (
-            <div className="space-y-1">
-              <Slider
-                value={[warmUpPct]}
-                onValueChange={(val) => {
-                      const arr = Array.isArray(val) ? val : [val];
-                      setWarmUpPct(arr[0]);
-                    }}
-                min={0}
-                max={100}
-              />
-              <p className="text-xs text-muted-foreground">{warmUpPct}%</p>
-            </div>
-          )}
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="add-targetReps">Target Reps</Label>
-          <Input
-            id="add-targetReps"
-            name="targetReps"
-            placeholder="e.g., 8-12"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="add-restSeconds">Rest (seconds)</Label>
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={useDefaultRest}
-                onChange={(e) => setUseDefaultRest(e.target.checked)}
-                className="rounded"
-              />
-              Default ({defaults.restSeconds}s)
-            </label>
-          </div>
-          <Input
-            id="add-restSeconds"
-            name="restSeconds"
-            type="number"
-            min={0}
-            max={600}
-            step={5}
-            defaultValue={defaults.restSeconds}
-            disabled={useDefaultRest}
-            className="w-24"
-          />
-        </div>
-
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={onBack}>
-            Back
-          </Button>
-          <Button type="submit" disabled={pending}>
-            {pending ? "Adding..." : "Add Exercise"}
-          </Button>
-        </DialogFooter>
-      </form>
-    </>
+      <AddExerciseDialog
+        muscleGroups={muscleGroups}
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+      />
+    </div>
   );
 }

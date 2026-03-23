@@ -9,8 +9,9 @@ import {
   ChevronDown,
   Trash2,
   Pencil,
-  PlayCircle,
-  GripVertical,
+  ArrowRight,
+  FileUp,
+  Footprints,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -42,6 +43,9 @@ import {
   deleteWorkout,
   reorderWorkout,
 } from "../../_actions";
+import { ImportDialog } from "@/components/import/import-dialog";
+import { formatEstimatedTime } from "@/lib/workout-time";
+import { Clock } from "lucide-react";
 
 type Phase = {
   id: string;
@@ -57,7 +61,13 @@ type Workout = {
   programId: string;
   phaseId: string | null;
   phase: Phase | null;
+  workoutType: "STRENGTH" | "CARDIO";
+  targetDistanceMeters: number | null;
+  targetDurationSeconds: number | null;
+  targetPaceSecondsPerKm: number | null;
+  cardioNotes: string | null;
   _count: { exercises: number };
+  estimatedMinutes: number | null;
 };
 
 type Program = {
@@ -70,13 +80,24 @@ export function WorkoutsSection({
   workouts,
   phases,
   lastCompletedWorkoutId,
+  exercises,
 }: {
   program: Program;
   workouts: Workout[];
   phases: Phase[];
   lastCompletedWorkoutId: string | null;
+  exercises: Array<{ id: string; name: string; muscleGroup: string; equipmentType: string }>;
 }) {
   const isPeriodized = program.type === "PERIODIZED";
+
+  // Compute next workout for simple programs
+  const nextWorkoutId = (() => {
+    if (isPeriodized || workouts.length === 0) return null;
+    if (!lastCompletedWorkoutId) return workouts[0]?.id ?? null;
+    const lastIdx = workouts.findIndex((w) => w.id === lastCompletedWorkoutId);
+    const nextIdx = lastIdx === -1 ? 0 : (lastIdx + 1) % workouts.length;
+    return workouts[nextIdx]?.id ?? null;
+  })();
 
   // Group workouts by phase for periodized programs
   const groupedWorkouts = isPeriodized
@@ -98,7 +119,20 @@ export function WorkoutsSection({
           <h2 className="text-xl font-semibold tracking-tight">Workouts</h2>
           <Badge variant="secondary">{workouts.length}</Badge>
         </div>
-        <WorkoutFormDialog programId={program.id} phases={phases} isPeriodized={isPeriodized} />
+        <div className="flex gap-2">
+          <ImportDialog
+            mode="workouts"
+            exercises={exercises}
+            programId={program.id}
+            trigger={
+              <Button variant="outline" size="sm">
+                <FileUp className="size-3.5" />
+                Import
+              </Button>
+            }
+          />
+          <WorkoutFormDialog programId={program.id} phases={phases} isPeriodized={isPeriodized} />
+        </div>
       </div>
 
       {workouts.length === 0 ? (
@@ -178,7 +212,7 @@ export function WorkoutsSection({
               isPeriodized={isPeriodized}
               isFirst={idx === 0}
               isLast={idx === workouts.length - 1}
-              isNext={false}
+              isNext={workout.id === nextWorkoutId}
             />
           ))}
         </div>
@@ -207,7 +241,10 @@ function WorkoutCard({
   const [deleting, setDeleting] = useState(false);
 
   return (
-    <Card size="sm" className="group">
+    <Card
+      size="sm"
+      className={`group ${isNext ? "border-primary/30 bg-primary/5 ring-1 ring-primary/20" : ""}`}
+    >
       <CardContent className="flex items-center gap-3">
         <div className="flex flex-col gap-0.5">
           <Button
@@ -232,19 +269,73 @@ function WorkoutCard({
           href={`/programs/${programId}/workouts/${workout.id}`}
           className="flex flex-1 items-center gap-3 min-w-0"
         >
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted font-mono text-sm font-bold text-muted-foreground">
-            {workout.dayIndex + 1}
+          <div
+            className={`flex size-9 shrink-0 items-center justify-center rounded-lg font-mono text-sm font-bold ${
+              isNext
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted text-muted-foreground"
+            }`}
+          >
+            {workout.workoutType === "CARDIO" ? (
+              <Footprints className="size-4" />
+            ) : (
+              workout.dayIndex + 1
+            )}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-medium truncate">{workout.name}</p>
+            <div className="flex items-center gap-2">
+              <p className="font-medium truncate">{workout.name}</p>
+              {workout.workoutType === "CARDIO" && (
+                <Badge variant="outline" className="text-xs shrink-0">
+                  Cardio
+                </Badge>
+              )}
+              {isNext && (
+                <Badge variant="secondary" className="text-xs shrink-0">
+                  Up Next
+                </Badge>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground">
               Day {workout.dayIndex + 1}
               {" \u00B7 "}
-              {workout._count.exercises}{" "}
-              {workout._count.exercises === 1 ? "exercise" : "exercises"}
+              {workout.workoutType === "CARDIO" ? (
+                <>
+                  {workout.targetDistanceMeters
+                    ? `${(workout.targetDistanceMeters / 1000).toFixed(1)} km`
+                    : ""}
+                  {workout.targetDistanceMeters && workout.cardioNotes ? " \u00B7 " : ""}
+                  {workout.cardioNotes ?? ""}
+                  {!workout.targetDistanceMeters && !workout.cardioNotes && "Run"}
+                </>
+              ) : (
+                <>
+                  {workout._count.exercises}{" "}
+                  {workout._count.exercises === 1 ? "exercise" : "exercises"}
+                </>
+              )}
+              {workout.estimatedMinutes != null && workout.estimatedMinutes > 0 && (
+                <>
+                  {" \u00B7 "}
+                  <Clock className="inline size-3 align-text-bottom" />
+                  {" "}
+                  {formatEstimatedTime(workout.estimatedMinutes)}
+                </>
+              )}
             </p>
           </div>
         </Link>
+
+        {isNext && (
+          <Badge
+            variant="default"
+            className="shrink-0"
+            render={<Link href={`/programs/${programId}/workouts/${workout.id}`} />}
+          >
+            Start
+            <ArrowRight className="size-3" />
+          </Badge>
+        )}
 
         <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
           <WorkoutFormDialog
@@ -287,6 +378,9 @@ function WorkoutFormDialog({
   const [selectedPhase, setSelectedPhase] = useState(
     workout?.phaseId ?? ""
   );
+  const [workoutType, setWorkoutType] = useState<"STRENGTH" | "CARDIO">(
+    workout?.workoutType ?? "STRENGTH"
+  );
   const isEditing = !!workout;
 
   async function handleSubmit(formData: FormData) {
@@ -294,6 +388,7 @@ function WorkoutFormDialog({
     if (isPeriodized && selectedPhase) {
       formData.set("phaseId", selectedPhase);
     }
+    formData.set("workoutType", workoutType);
     if (isEditing) {
       await updateWorkout(workout.id, programId, formData);
     } else {
@@ -330,17 +425,88 @@ function WorkoutFormDialog({
               : "Add a new workout to your program."}
           </DialogDescription>
         </DialogHeader>
-        <form action={handleSubmit} className="space-y-4">
+        <form key={String(open)} action={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="workout-name">Workout Name</Label>
             <Input
               id="workout-name"
               name="name"
-              placeholder="e.g., Upper Body A"
+              placeholder={workoutType === "CARDIO" ? "e.g., Easy Run" : "e.g., Upper Body A"}
               defaultValue={workout?.name ?? ""}
               required
             />
           </div>
+
+          <div className="space-y-2">
+            <Label>Workout Type</Label>
+            <Select
+              value={workoutType}
+              onValueChange={(val) => setWorkoutType(val as "STRENGTH" | "CARDIO")}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="STRENGTH">Strength</SelectItem>
+                <SelectItem value="CARDIO">Cardio / Run</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {workoutType === "CARDIO" && (
+            <div className="space-y-4 rounded-lg border p-3">
+              <p className="text-xs font-medium text-muted-foreground">Cardio Targets (optional)</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label htmlFor="target-distance" className="text-xs">Distance (km)</Label>
+                  <Input
+                    id="target-distance"
+                    name="targetDistanceKm"
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    placeholder="5.0"
+                    defaultValue={workout?.targetDistanceMeters ? (workout.targetDistanceMeters / 1000).toString() : ""}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="target-duration" className="text-xs">Duration (min)</Label>
+                  <Input
+                    id="target-duration"
+                    name="targetDurationMinutes"
+                    type="number"
+                    step="1"
+                    min="0"
+                    placeholder="30"
+                    defaultValue={workout?.targetDurationSeconds ? (workout.targetDurationSeconds / 60).toString() : ""}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label htmlFor="target-pace" className="text-xs">Target Pace (min/km)</Label>
+                  <Input
+                    id="target-pace"
+                    name="targetPaceMinPerKm"
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    placeholder="5.5"
+                    defaultValue={workout?.targetPaceSecondsPerKm ? (workout.targetPaceSecondsPerKm / 60).toString() : ""}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="cardio-notes" className="text-xs">Notes</Label>
+                  <Input
+                    id="cardio-notes"
+                    name="cardioNotes"
+                    placeholder="e.g., easy pace"
+                    defaultValue={workout?.cardioNotes ?? ""}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {isPeriodized && phases.length > 0 && (
             <div className="space-y-2">

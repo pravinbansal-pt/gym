@@ -612,7 +612,7 @@ export function ExerciseHistory({ exerciseId, history }: ExerciseHistoryProps) {
                               </span>
                             ) : (
                               <span className="text-muted-foreground">
-                                \u2014
+                                {"\u2014"}
                               </span>
                             )}
                           </TableCell>

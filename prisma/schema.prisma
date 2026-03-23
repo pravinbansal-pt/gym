@@ -7,6 +7,71 @@ datasource db {
   provider = "postgresql"
 }
 
+// ─── Auth (Auth.js) ────────────────────────────────────────────────
+
+model User {
+  id                String             @id @default(cuid())
+  name              String?
+  email             String?            @unique
+  emailVerified     DateTime?
+  image             String?
+  username          String?            @unique
+  accounts          Account[]
+  sessions          Session[]
+  schedules         WorkoutSchedule[]
+  previousUsernames PreviousUsername[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+}
+
+model PreviousUsername {
+  id        String   @id @default(cuid())
+  username  String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  changedAt DateTime @default(now())
+
+  @@index([username])
+  @@index([userId])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
 // ─── Exercise Library ───────────────────────────────────────────────
 
 model MuscleGroup {
@@ -15,6 +80,27 @@ model MuscleGroup {
   displayOrder Int        @default(0)
   exercises    Exercise[] @relation("PrimaryMuscle")
   secondaryOf  Exercise[] @relation("SecondaryMuscles")
+}
+
+enum WeightUnit {
+  KG
+  LBS
+}
+
+enum DistanceUnit {
+  KM
+  MILES
+}
+
+enum WorkoutType {
+  STRENGTH
+  CARDIO
+}
+
+model AppSettings {
+  id                  String       @id @default("default")
+  defaultWeightUnit   WeightUnit   @default(KG)
+  defaultDistanceUnit DistanceUnit @default(KM)
 }
 
 enum EquipmentType {
@@ -36,6 +122,7 @@ model Exercise {
   description           String?
   equipmentType         EquipmentType             @default(OTHER)
   imageUrl              String?
+  exerciseDbId          String?                   @unique
   primaryMuscleGroup    MuscleGroup               @relation("PrimaryMuscle", fields: [primaryMuscleGroupId], references: [id])
   primaryMuscleGroupId  String
   secondaryMuscleGroups MuscleGroup[]             @relation("SecondaryMuscles")
@@ -43,6 +130,7 @@ model Exercise {
   sessionExercises      WorkoutSessionExercise[]
   notes                 ExerciseNote[]
   personalRecords       PersonalRecord[]
+  weightUnit            WeightUnit?
   createdAt             DateTime                  @default(now())
   updatedAt             DateTime                  @updatedAt
 
@@ -69,6 +157,8 @@ model Program {
   phases                 ProgramPhase[]
   workouts               ProgramWorkout[]
   sessions               WorkoutSession[]
+  cardioActivities       CardioActivity[]
+  schedules              WorkoutSchedule[] @relation("ScheduleProgram")
   createdAt              DateTime         @default(now())
   updatedAt              DateTime         @updatedAt
 }
@@ -87,26 +177,33 @@ model ProgramPhase {
 }
 
 model ProgramWorkout {
-  id         String                   @id @default(cuid())
-  program    Program                  @relation(fields: [programId], references: [id], onDelete: Cascade)
-  programId  String
-  phase      ProgramPhase?            @relation(fields: [phaseId], references: [id], onDelete: SetNull)
-  phaseId    String?
-  name       String
-  dayIndex   Int
-  orderIndex Int
-  exercises  ProgramWorkoutExercise[]
-  sessions   WorkoutSession[]
+  id                    String                   @id @default(cuid())
+  program               Program                  @relation(fields: [programId], references: [id], onDelete: Cascade)
+  programId             String
+  phase                 ProgramPhase?            @relation(fields: [phaseId], references: [id], onDelete: SetNull)
+  phaseId               String?
+  name                  String
+  dayIndex              Int
+  orderIndex            Int
+  workoutType           WorkoutType              @default(STRENGTH)
+  targetDistanceMeters  Float?
+  targetDurationSeconds Int?
+  targetPaceSecondsPerKm Float?
+  cardioNotes           String?
+  exercises             ProgramWorkoutExercise[]
+  sessions              WorkoutSession[]
+  cardioActivities      CardioActivity[]
+  scheduledWorkouts     ScheduledWorkout[]
 
   @@index([programId])
   @@index([phaseId])
 }
 
 model ProgramWorkoutExercise {
-  id               String         @id @default(cuid())
-  programWorkout   ProgramWorkout @relation(fields: [programWorkoutId], references: [id], onDelete: Cascade)
+  id               String              @id @default(cuid())
+  programWorkout   ProgramWorkout      @relation(fields: [programWorkoutId], references: [id], onDelete: Cascade)
   programWorkoutId String
-  exercise         Exercise       @relation(fields: [exerciseId], references: [id])
+  exercise         Exercise            @relation(fields: [exerciseId], references: [id])
   exerciseId       String
   orderIndex       Int
   warmUpSets       Int?
@@ -114,9 +211,23 @@ model ProgramWorkoutExercise {
   warmUpPercent    Float?
   targetReps       String?
   restSeconds      Int?
+  sets             ProgramWorkoutSet[]
 
   @@index([programWorkoutId])
   @@index([exerciseId])
+}
+
+model ProgramWorkoutSet {
+  id                       String                 @id @default(cuid())
+  programWorkoutExercise   ProgramWorkoutExercise @relation(fields: [programWorkoutExerciseId], references: [id], onDelete: Cascade)
+  programWorkoutExerciseId String
+  setType                  SetType                @default(WORKING)
+  targetWeight             Float?
+  targetReps               String?
+  restSeconds              Int                    @default(90)
+  orderIndex               Int
+
+  @@index([programWorkoutExerciseId])
 }
 
 // ─── Workout Sessions ───────────────────────────────────────────────
@@ -124,6 +235,7 @@ model ProgramWorkoutExercise {
 enum SessionStatus {
   PLANNED
   IN_PROGRESS
+  PAUSED
   COMPLETED
 }
 
@@ -134,13 +246,16 @@ model WorkoutSession {
   programId        String?
   programWorkout   ProgramWorkout?          @relation(fields: [programWorkoutId], references: [id], onDelete: SetNull)
   programWorkoutId String?
-  status           SessionStatus            @default(PLANNED)
-  startedAt        DateTime?
-  endedAt          DateTime?
-  notes            String?
-  exercises        WorkoutSessionExercise[]
-  createdAt        DateTime                 @default(now())
-  updatedAt        DateTime                 @updatedAt
+  status              SessionStatus            @default(PLANNED)
+  startedAt           DateTime?
+  endedAt             DateTime?
+  pausedAt            DateTime?
+  totalPausedSeconds  Int                      @default(0)
+  notes               String?
+  exercises         WorkoutSessionExercise[]
+  scheduledWorkout  ScheduledWorkout?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
 
   @@index([programId])
   @@index([programWorkoutId])
@@ -211,4 +326,120 @@ model PersonalRecord {
 
   @@index([exerciseId])
   @@index([achievedAt])
+}
+
+// ─── Workout Schedule ──────────────────────────────────────────────
+
+enum ScheduledWorkoutStatus {
+  SCHEDULED
+  COMPLETED
+  SKIPPED
+}
+
+model WorkoutSchedule {
+  id                String             @id @default(cuid())
+  userId            String
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  programId         String
+  program           Program            @relation("ScheduleProgram", fields: [programId], references: [id], onDelete: Cascade)
+  startDate         DateTime           @db.Date
+  trainingDays      Int[]
+  isActive          Boolean            @default(true)
+  googleCalendarId  String?
+  scheduledWorkouts ScheduledWorkout[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@index([userId])
+  @@index([programId])
+}
+
+model ScheduledWorkout {
+  id               String                 @id @default(cuid())
+  schedule         WorkoutSchedule        @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  scheduleId       String
+  programWorkout   ProgramWorkout         @relation(fields: [programWorkoutId], references: [id])
+  programWorkoutId String
+  scheduledDate    DateTime               @db.Date
+  originalDate     DateTime?              @db.Date
+  status           ScheduledWorkoutStatus @default(SCHEDULED)
+  session          WorkoutSession?        @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  sessionId        String?                @unique
+  googleEventId    String?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  @@index([scheduleId])
+  @@index([scheduledDate])
+  @@index([status])
+  @@index([programWorkoutId])
+}
+
+// ─── Strava Integration ────────────────────────────────────────────
+
+model StravaConnection {
+  id              String   @id @default("default")
+  stravaAthleteId Int
+  accessToken     String
+  refreshToken    String
+  expiresAt       DateTime
+  scope           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// ─── Cardio Activities ─────────────────────────────────────────────
+
+model CardioActivity {
+  id                    String          @id @default(cuid())
+  name                  String
+  activityType          String          @default("Run")
+
+  // Core metrics (stored in metric units)
+  distanceMeters        Float
+  movingTimeSeconds     Int
+  elapsedTimeSeconds    Int
+
+  // Pace & speed
+  averagePaceSecsPerKm  Float?
+  averageSpeedMps       Float?
+  maxSpeedMps           Float?
+
+  // Elevation
+  elevationGainMeters   Float?
+  elevationLossMeters   Float?
+
+  // Heart rate
+  averageHeartrate      Float?
+  maxHeartrate          Float?
+
+  // Cadence & calories
+  averageCadence        Float?
+  calories              Float?
+
+  // Rich data (JSON)
+  splits                Json?
+  laps                  Json?
+  bestEfforts           Json?
+  summaryPolyline       String?
+
+  // Source tracking
+  source                String          @default("manual")
+  stravaActivityId      BigInt?         @unique
+
+  // Program integration
+  programWorkout        ProgramWorkout? @relation(fields: [programWorkoutId], references: [id], onDelete: SetNull)
+  programWorkoutId      String?
+  program               Program?        @relation(fields: [programId], references: [id], onDelete: SetNull)
+  programId             String?
+
+  // Timestamps
+  activityDate          DateTime
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  @@index([activityDate])
+  @@index([stravaActivityId])
+  @@index([programWorkoutId])
+  @@index([source])
 }

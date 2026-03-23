@@ -33,6 +33,9 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# MCP configuration (contains API keys)
+.mcp.json
+
 # vercel
 .vercel
 
@@ -41,3 +44,6 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+# AI-generated exercise images
+/public/exercises/

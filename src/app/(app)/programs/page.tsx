@@ -6,8 +6,10 @@ import {
   Layers,
   RotateCcw,
   Zap,
+  FileUp,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -17,20 +19,34 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { CreateProgramDialog } from "./_components/create-program-dialog";
+import { ImportDialog } from "@/components/import/import-dialog";
 
 export default async function ProgramsPage() {
-  const programs = await db.program.findMany({
-    include: {
-      _count: { select: { workouts: true } },
-      phases: { orderBy: { orderIndex: "asc" } },
-      sessions: {
-        where: { status: "COMPLETED" },
-        orderBy: { endedAt: "desc" },
-        take: 1,
+  const [programs, exercises] = await Promise.all([
+    db.program.findMany({
+      include: {
+        _count: { select: { workouts: true } },
+        phases: { orderBy: { orderIndex: "asc" } },
+        sessions: {
+          where: { status: "COMPLETED" },
+          orderBy: { endedAt: "desc" },
+          take: 1,
+        },
       },
-    },
-    orderBy: { updatedAt: "desc" },
-  });
+      orderBy: { updatedAt: "desc" },
+    }),
+    db.exercise.findMany({
+      include: { primaryMuscleGroup: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
+
+  const exerciseList = exercises.map((e) => ({
+    id: e.id,
+    name: e.name,
+    muscleGroup: e.primaryMuscleGroup?.name ?? "",
+    equipmentType: e.equipmentType,
+  }));
 
   return (
     <div className="space-y-6">
@@ -41,7 +57,19 @@ export default async function ProgramsPage() {
             Manage your training programs and workout schedules.
           </p>
         </div>
-        <CreateProgramDialog />
+        <div className="flex gap-2">
+          <ImportDialog
+            mode="program"
+            exercises={exerciseList}
+            trigger={
+              <Button variant="outline" size="sm">
+                <FileUp className="size-4" data-icon="inline-start" />
+                Import
+              </Button>
+            }
+          />
+          <CreateProgramDialog />
+        </div>
       </div>
 
       {programs.length === 0 ? (

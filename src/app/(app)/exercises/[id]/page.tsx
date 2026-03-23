@@ -9,6 +9,9 @@ import {
   Calendar,
   FileText,
   Clock,
+  Info,
+  ListOrdered,
+  Lightbulb,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,8 +25,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getExerciseById } from "../_actions";
 import { getExerciseHistory } from "@/lib/actions/exercises";
 import { getNotesForExercise } from "@/lib/actions/notes";
+import { getExerciseDbDetail } from "@/lib/actions/exercisedb";
 import { ExerciseHistory } from "./_components/exercise-history";
 import { ExerciseNotes } from "./_components/exercise-notes";
+import { GenerateImageButton } from "./_components/generate-image-button";
 
 const EQUIPMENT_LABELS: Record<string, string> = {
   BARBELL: "Barbell",
@@ -45,15 +50,19 @@ export default async function ExerciseDetailPage({
 }) {
   const { id } = await params;
 
-  const [exercise, historyResult, notesResult] = await Promise.all([
-    getExerciseById(id),
-    getExerciseHistory(id),
-    getNotesForExercise(id),
-  ]);
-
-  if (!exercise) {
+  const exerciseData = await getExerciseById(id);
+  if (!exerciseData) {
     notFound();
   }
+  const exercise = exerciseData;
+
+  const [historyResult, notesResult, apiData] = await Promise.all([
+    getExerciseHistory(id),
+    getNotesForExercise(id),
+    exercise.exerciseDbId
+      ? getExerciseDbDetail(exercise.exerciseDbId)
+      : Promise.resolve(null),
+  ]);
 
   const history =
     historyResult.success && Array.isArray(historyResult.data)
@@ -204,28 +213,44 @@ export default async function ExerciseDetailPage({
 
       {/* Main Content */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Image + Description */}
+        {/* Left Column — Image, Video, Details */}
         <div className="space-y-4 lg:col-span-1">
-          {/* Image Placeholder */}
-          <div className="flex aspect-square items-center justify-center rounded-xl bg-muted">
-            <Dumbbell className="size-16 text-muted-foreground/30" />
-          </div>
-
-          {/* Description */}
-          {exercise.description && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Description</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground leading-relaxed">
-                  {exercise.description}
-                </p>
-              </CardContent>
-            </Card>
+          {/* Exercise Image */}
+          {(apiData?.imageUrls["1080p"] ?? exercise.imageUrl) ? (
+            <div className="space-y-2">
+              <div className="flex items-center justify-center overflow-hidden rounded-xl bg-white">
+                <img
+                  src={(apiData?.imageUrls["1080p"] ?? exercise.imageUrl)!}
+                  alt={`Illustration of ${exercise.name}`}
+                  className="max-w-full object-contain"
+                  suppressHydrationWarning
+                />
+              </div>
+              {!apiData?.imageUrls["1080p"] && (
+                <GenerateImageButton
+                  exerciseId={exercise.id}
+                  exerciseName={exercise.name}
+                  equipmentType={exercise.equipmentType}
+                  muscleGroup={exercise.primaryMuscleGroup.name}
+                  hasImage
+                />
+              )}
+            </div>
+          ) : (
+            <div className="flex aspect-square flex-col items-center justify-center gap-4 rounded-xl bg-muted">
+              <Dumbbell className="size-16 text-muted-foreground/30" />
+              <GenerateImageButton
+                exerciseId={exercise.id}
+                exerciseName={exercise.name}
+                equipmentType={exercise.equipmentType}
+                muscleGroup={exercise.primaryMuscleGroup.name}
+                hasImage={false}
+              />
+            </div>
           )}
 
-          {/* Info */}
+
+          {/* Details card */}
           <Card>
             <CardHeader>
               <CardTitle>Details</CardTitle>
@@ -239,17 +264,37 @@ export default async function ExerciseDetailPage({
                   {exercise.primaryMuscleGroup.name}
                 </Badge>
               </div>
-              {exercise.secondaryMuscleGroups.length > 0 && (
+              {(apiData?.targetMuscles ?? []).length > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">
+                    Target Muscles
+                  </span>
+                  <div className="flex flex-wrap gap-1 justify-end">
+                    {apiData!.targetMuscles.map((m) => (
+                      <Badge key={m} variant="secondary" className="text-xs capitalize">
+                        {m.toLowerCase()}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {((apiData?.secondaryMuscles ?? []).length > 0 || exercise.secondaryMuscleGroups.length > 0) && (
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">
                     Secondary Muscles
                   </span>
                   <div className="flex flex-wrap gap-1 justify-end">
-                    {exercise.secondaryMuscleGroups.map((mg) => (
-                      <Badge key={mg.id} variant="outline">
-                        {mg.name}
-                      </Badge>
-                    ))}
+                    {apiData?.secondaryMuscles
+                      ? apiData.secondaryMuscles.map((m) => (
+                          <Badge key={m} variant="outline" className="text-xs capitalize">
+                            {m.toLowerCase()}
+                          </Badge>
+                        ))
+                      : exercise.secondaryMuscleGroups.map((mg) => (
+                          <Badge key={mg.id} variant="outline">
+                            {mg.name}
+                          </Badge>
+                        ))}
                   </div>
                 </div>
               )}
@@ -265,8 +310,69 @@ export default async function ExerciseDetailPage({
           </Card>
         </div>
 
-        {/* Tabs Section */}
-        <div className="lg:col-span-2">
+        {/* Right Column — Overview, Instructions, Tips, Tabs */}
+        <div className="space-y-6 lg:col-span-2">
+          {/* Overview */}
+          {(apiData?.overview || exercise.description) && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Info className="size-4" />
+                  Overview
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground leading-relaxed">
+                  {apiData?.overview ?? exercise.description}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Instructions */}
+          {apiData?.instructions && apiData.instructions.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ListOrdered className="size-4" />
+                  Instructions
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
+                  {apiData.instructions.map((step, i) => (
+                    <li key={i} className="leading-relaxed">
+                      {step}
+                    </li>
+                  ))}
+                </ol>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Tips */}
+          {apiData?.exerciseTips && apiData.exerciseTips.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Lightbulb className="size-4" />
+                  Tips
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2 text-muted-foreground">
+                  {apiData.exerciseTips.map((tip, i) => (
+                    <li key={i} className="leading-relaxed flex gap-2">
+                      <span className="text-primary mt-1 shrink-0">•</span>
+                      <span>{tip}</span>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Tabs: History & Notes */}
           <Tabs defaultValue="history">
             <TabsList>
               <TabsTrigger value="history">

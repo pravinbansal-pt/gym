@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Exercise List — Final</title>
+<style>
+  :root {
+    --background: #ffffff;
+    --foreground: #0a0a0a;
+    --muted: #f5f5f5;
+    --muted-fg: #737373;
+    --border: #e5e5e5;
+    --input: #e5e5e5;
+    --ring: #1a1a1a;
+    --destructive: #ef4444;
+    --amber-bg: #fef3c7; --amber-fg: #b45309;
+    --blue-bg: #dbeafe; --blue-fg: #1d4ed8;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #fafafa; color: var(--foreground); line-height: 1.5;
+  }
+  .page { max-width: 680px; margin: 0 auto; padding: 32px 16px; }
+
+  h2 { font-size: 20px; font-weight: 700; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+  h2 .count { font-size: 11px; font-weight: 600; background: var(--muted); color: var(--muted-fg); padding: 2px 8px; border-radius: 10px; }
+
+  /* ── Card ── */
+  .card {
+    background: var(--background); border: 1px solid var(--border);
+    border-radius: 8px; overflow: hidden; margin-bottom: 6px;
+  }
+
+  /* ── Exercise header ── */
+  .ex-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; cursor: pointer; user-select: none;
+  }
+  .ex-header:hover { background: var(--muted); }
+  .reorder { display: flex; flex-direction: column; }
+  .reorder button {
+    background: none; border: none; cursor: pointer;
+    color: #ccc; font-size: 12px; line-height: 1; padding: 0;
+  }
+  .reorder button:hover { color: #888; }
+  .num {
+    width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+    border-radius: 50%; background: var(--muted);
+    font-size: 12px; font-weight: 700; color: var(--muted-fg); flex-shrink: 0;
+  }
+  .ex-info { flex: 1; min-width: 0; }
+  .ex-name { font-size: 14px; font-weight: 600; }
+  .ex-meta { font-size: 11px; color: var(--muted-fg); }
+  .pills { display: flex; gap: 2px; align-items: center; flex-shrink: 0; }
+  .pill { width: 5px; height: 16px; border-radius: 2px; }
+  .pill.w { background: #fbbf24; }
+  .pill.s { background: #60a5fa; }
+  .pill-label { font-size: 11px; color: var(--muted-fg); margin-left: 4px; white-space: nowrap; }
+  .chevron { color: #ccc; font-size: 14px; transition: transform 0.2s; flex-shrink: 0; }
+  .card.open .chevron { transform: rotate(90deg); }
+  .x-btn {
+    background: none; border: none; cursor: pointer; color: #ddd;
+    font-size: 13px; padding: 2px; flex-shrink: 0; transition: color 0.15s;
+  }
+  .x-btn:hover { color: var(--destructive); }
+
+  /* ── Panel ── */
+  .panel { display: none; border-top: 1px solid var(--border); background: #fafafa; padding: 8px 14px 12px; }
+  .card.open .panel { display: block; }
+
+  /* ── Table ── */
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--muted-fg); text-align: left; padding: 2px 6px 6px;
+    /* NO border-bottom — cleaner */
+  }
+  td { padding: 4px 6px; vertical-align: middle; }
+  tbody tr:hover td { background: rgba(0,0,0,0.02); border-radius: 4px; }
+
+  /* Column widths */
+  .col-set { width: 40px; text-align: center; }
+  .col-prev { /* flex */ }
+  .col-kg { width: 68px; text-align: center; }
+  .col-reps { width: 60px; text-align: center; }
+  .col-rest { width: 64px; text-align: center; }
+  .col-rm { width: 28px; text-align: center; }
+
+  /* ── Badge ── */
+  .badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 26px; border-radius: 6px;
+    font-size: 10px; font-weight: 700; cursor: pointer;
+    border: none; transition: all 0.15s;
+  }
+  .badge.warm { background: var(--amber-bg); color: var(--amber-fg); }
+  .badge.warm:hover { background: #fde68a; }
+  .badge.work { background: var(--blue-bg); color: var(--blue-fg); }
+  .badge.work:hover { background: #bfdbfe; }
+
+  /* ── Set input ── */
+  .set-input {
+    height: 28px; width: 100%;
+    border: 1px solid var(--input); border-radius: 6px;
+    background: var(--background);
+    text-align: center; font-size: 13px; font-weight: 500;
+    color: var(--foreground); outline: none;
+  }
+  .set-input:hover { border-color: #ccc; }
+  .set-input:focus { border-color: var(--ring); box-shadow: 0 0 0 2px rgba(0,0,0,0.05); }
+  .set-input::placeholder { color: #ccc; }
+
+  /* ── Rest chip ── */
+  .rest-chip {
+    display: inline-flex; align-items: center; justify-content: center; gap: 3px;
+    padding: 3px 8px; border-radius: 12px;
+    background: #eff6ff; color: #3b82f6;
+    font-size: 11px; font-weight: 600;
+    cursor: pointer; border: none; transition: all 0.15s;
+    width: 100%;
+  }
+  .rest-chip:hover { background: #dbeafe; color: #2563eb; }
+  .rest-chip svg { width: 11px; height: 11px; flex-shrink: 0; }
+  .rest-chip input {
+    width: 32px; background: none; border: none; text-align: center;
+    font-size: 11px; font-weight: 600; color: inherit; outline: none;
+    font-family: inherit;
+  }
+
+  /* ── Previous text ── */
+  .prev { font-size: 12px; color: #bbb; }
+
+  /* ── Remove ── */
+  .rm-btn {
+    background: none; border: none; cursor: pointer; color: #ddd;
+    display: flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px; border-radius: 4px;
+    transition: all 0.15s; font-size: 12px; margin: 0 auto;
+  }
+  .rm-btn:hover { color: var(--destructive); background: #fef2f2; }
+
+  /* ── Add set ── */
+  .add-set {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    width: 100%; padding: 8px; margin-top: 6px;
+    background: none; border: 1px dashed var(--border); border-radius: 6px;
+    font-size: 12px; font-weight: 500; color: var(--muted-fg);
+    cursor: pointer; transition: all 0.15s;
+  }
+  .add-set:hover { border-color: #aaa; color: var(--foreground); background: var(--muted); }
+</style>
+</head>
+<body>
+<div class="page">
+
+<h2>Exercises <span class="count">2</span></h2>
+
+<!-- ── Exercise 1: expanded ── -->
+<div class="card open">
+  <div class="ex-header" onclick="this.parentElement.classList.toggle('open')">
+    <div class="reorder"><button>&#8249;</button><button>&#8250;</button></div>
+    <div class="num">1</div>
+    <div class="ex-info">
+      <div class="ex-name">Hack Squat</div>
+      <div class="ex-meta">Quadriceps · Machine</div>
+    </div>
+    <div class="pills">
+      <div class="pill w"></div><div class="pill s"></div><div class="pill s"></div><div class="pill s"></div>
+      <span class="pill-label">1W + 3S</span>
+    </div>
+    <div class="chevron">›</div>
+    <button class="x-btn" onclick="event.stopPropagation()">✕</button>
+  </div>
+  <div class="panel">
+    <table>
+      <thead>
+        <tr>
+          <th class="col-set">Set</th>
+          <th class="col-prev">Previous</th>
+          <th class="col-kg">kg</th>
+          <th class="col-reps">Reps</th>
+          <th class="col-rest">Rest</th>
+          <th class="col-rm"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="col-set"><button class="badge warm">W1</button></td>
+          <td><span class="prev">—</span></td>
+          <td><input class="set-input" value="20"></td>
+          <td><input class="set-input" value="10"></td>
+          <td>
+            <div class="rest-chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <input value="1:30">
+            </div>
+          </td>
+          <td><button class="rm-btn">—</button></td>
+        </tr>
+        <tr>
+          <td class="col-set"><button class="badge work">S1</button></td>
+          <td><span class="prev">—</span></td>
+          <td><input class="set-input" value="30"></td>
+          <td><input class="set-input" value="8"></td>
+          <td>
+            <div class="rest-chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <input value="2:30">
+            </div>
+          </td>
+          <td><button class="rm-btn">—</button></td>
+        </tr>
+        <tr>
+          <td class="col-set"><button class="badge work">S2</button></td>
+          <td><span class="prev">30 kg × 8</span></td>
+          <td><input class="set-input" value="30"></td>
+          <td><input class="set-input" value="8"></td>
+          <td>
+            <div class="rest-chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <input value="2:30">
+            </div>
+          </td>
+          <td><button class="rm-btn">—</button></td>
+        </tr>
+        <tr>
+          <td class="col-set"><button class="badge work">S3</button></td>
+          <td><span class="prev">30 kg × 8</span></td>
+          <td><input class="set-input" value="30"></td>
+          <td><input class="set-input" value="8"></td>
+          <td>
+            <div class="rest-chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <input value="2:00">
+            </div>
+          </td>
+          <td><button class="rm-btn">—</button></td>
+        </tr>
+      </tbody>
+    </table>
+    <button class="add-set">+ Add Set (2:00)</button>
+  </div>
+</div>
+
+<!-- ── Exercise 2: collapsed ── -->
+<div class="card">
+  <div class="ex-header" onclick="this.parentElement.classList.toggle('open')">
+    <div class="reorder"><button>&#8249;</button><button>&#8250;</button></div>
+    <div class="num">2</div>
+    <div class="ex-info">
+      <div class="ex-name">Leg Extension</div>
+      <div class="ex-meta">Quadriceps · Machine</div>
+    </div>
+    <div class="pills">
+      <div class="pill w"></div><div class="pill s"></div><div class="pill s"></div>
+      <span class="pill-label">1W + 2S</span>
+    </div>
+    <div class="chevron">›</div>
+    <button class="x-btn" onclick="event.stopPropagation()">✕</button>
+  </div>
+  <div class="panel">
+    <table>
+      <thead>
+        <tr>
+          <th class="col-set">Set</th>
+          <th class="col-prev">Previous</th>
+          <th class="col-kg">kg</th>
+          <th class="col-reps">Reps</th>
+          <th class="col-rest">Rest</th>
+          <th class="col-rm"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="col-set"><button class="badge warm">W1</button></td>
+          <td><span class="prev">—</span></td>
+          <td><input class="set-input" placeholder="—"></td>
+          <td><input class="set-input" value="10"></td>
+          <td>
+            <div class="rest-chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <input value="1:00">
+            </div>
+          </td>
+          <td><button class="rm-btn">—</button></td>
+        </tr>
+        <tr>
+          <td class="col-set"><button class="badge work">S1</button></td>
+          <td><span class="prev">20 kg × 12</span></td>
+          <td><input class="set-input" placeholder="—"></td>
+          <td><input class="set-input" placeholder="—"></td>
+          <td>
+            <div class="rest-chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <input value="2:00">
+            </div>
+          </td>
+          <td><button class="rm-btn">—</button></td>
+        </tr>
+        <tr>
+          <td class="col-set"><button class="badge work">S2</button></td>
+          <td><span class="prev">20 kg × 12</span></td>
+          <td><input class="set-input" placeholder="—"></td>
+          <td><input class="set-input" placeholder="—"></td>
+          <td>
+            <div class="rest-chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <input value="2:00">
+            </div>
+          </td>
+          <td><button class="rm-btn">—</button></td>
+        </tr>
+      </tbody>
+    </table>
+    <button class="add-set">+ Add Set (2:00)</button>
+  </div>
+</div>
+
+<!-- ── Exercise 3: collapsed ── -->
+<div class="card">
+  <div class="ex-header" onclick="this.parentElement.classList.toggle('open')">
+    <div class="reorder"><button>&#8249;</button><button>&#8250;</button></div>
+    <div class="num">3</div>
+    <div class="ex-info">
+      <div class="ex-name">Leg Curl (Seated)</div>
+      <div class="ex-meta">Hamstrings · Machine</div>
+    </div>
+    <div class="pills">
+      <div class="pill w"></div><div class="pill s"></div><div class="pill s"></div>
+      <span class="pill-label">1W + 2S</span>
+    </div>
+    <div class="chevron">›</div>
+    <button class="x-btn" onclick="event.stopPropagation()">✕</button>
+  </div>
+  <div class="panel">
+    <table>
+      <thead>
+        <tr>
+          <th class="col-set">Set</th>
+          <th class="col-prev">Previous</th>
+          <th class="col-kg">kg</th>
+          <th class="col-reps">Reps</th>
+          <th class="col-rest">Rest</th>
+          <th class="col-rm"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="col-set"><button class="badge warm">W1</button></td>
+          <td><span class="prev">15 kg × 10</span></td>
+          <td><input class="set-input" value="15"></td>
+          <td><input class="set-input" value="10"></td>
+          <td>
+            <div class="rest-chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <input value="1:00">
+            </div>
+          </td>
+          <td><button class="rm-btn">—</button></td>
+        </tr>
+        <tr>
+          <td class="col-set"><button class="badge work">S1</button></td>
+          <td><span class="prev">25 kg × 12</span></td>
+          <td><input class="set-input" value="25"></td>
+          <td><input class="set-input" value="12"></td>
+          <td>
+            <div class="rest-chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <input value="2:00">
+            </div>
+          </td>
+          <td><button class="rm-btn">—</button></td>
+        </tr>
+        <tr>
+          <td class="col-set"><button class="badge work">S2</button></td>
+          <td><span class="prev">25 kg × 12</span></td>
+          <td><input class="set-input" value="25"></td>
+          <td><input class="set-input" value="12"></td>
+          <td>
+            <div class="rest-chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <input value="2:00">
+            </div>
+          </td>
+          <td><button class="rm-btn">—</button></td>
+        </tr>
+      </tbody>
+    </table>
+    <button class="add-set">+ Add Set (2:00)</button>
+  </div>
+</div>
+
+</div>
+</body>
+</html>

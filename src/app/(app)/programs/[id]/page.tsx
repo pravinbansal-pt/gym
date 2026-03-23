@@ -8,7 +8,7 @@ import { ProgramHeader } from "./_components/program-header";
 import { ProgramDefaults } from "./_components/program-defaults";
 import { PhasesSection } from "./_components/phases-section";
 import { WorkoutsSection } from "./_components/workouts-section";
-import { NextWorkoutIndicator } from "./_components/next-workout-indicator";
+import { estimateWorkoutMinutes } from "@/lib/workout-time";
 
 export default async function ProgramDetailPage({
   params,
@@ -17,29 +17,59 @@ export default async function ProgramDetailPage({
 }) {
   const { id } = await params;
 
-  const program = await db.program.findUnique({
-    where: { id },
-    include: {
-      phases: { orderBy: { orderIndex: "asc" } },
-      workouts: {
-        include: {
-          _count: { select: { exercises: true } },
-          phase: true,
+  const [program, allExercises] = await Promise.all([
+    db.program.findUnique({
+      where: { id },
+      include: {
+        phases: { orderBy: { orderIndex: "asc" } },
+        workouts: {
+          include: {
+            _count: { select: { exercises: true } },
+            phase: true,
+            exercises: {
+              include: {
+                sets: {
+                  select: { setType: true, restSeconds: true },
+                  orderBy: { orderIndex: "asc" },
+                },
+              },
+              orderBy: { orderIndex: "asc" },
+            },
+          },
+          orderBy: { orderIndex: "asc" },
         },
-        orderBy: { orderIndex: "asc" },
+        sessions: {
+          where: { status: "COMPLETED" },
+          orderBy: { endedAt: "desc" },
+          take: 1,
+          select: { programWorkoutId: true, endedAt: true },
+        },
       },
-      sessions: {
-        where: { status: "COMPLETED" },
-        orderBy: { endedAt: "desc" },
-        take: 1,
-        select: { programWorkoutId: true, endedAt: true },
-      },
-    },
-  });
+    }),
+    db.exercise.findMany({
+      include: { primaryMuscleGroup: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
 
   if (!program) notFound();
 
+  const exerciseList = allExercises.map((e) => ({
+    id: e.id,
+    name: e.name,
+    muscleGroup: e.primaryMuscleGroup?.name ?? "",
+    equipmentType: e.equipmentType,
+  }));
+
   const lastCompletedWorkoutId = program.sessions[0]?.programWorkoutId ?? null;
+
+  const workoutsWithTime = program.workouts.map((w) => ({
+    ...w,
+    estimatedMinutes:
+      w.workoutType === "CARDIO"
+        ? (w.targetDurationSeconds ? Math.round(w.targetDurationSeconds / 60) : null)
+        : estimateWorkoutMinutes(w.exercises),
+  }));
 
   return (
     <div className="space-y-6">
@@ -68,18 +98,12 @@ export default async function ProgramDetailPage({
         </>
       )}
 
-      {program.type === "SIMPLE" && lastCompletedWorkoutId && (
-        <NextWorkoutIndicator
-          workouts={program.workouts}
-          lastCompletedWorkoutId={lastCompletedWorkoutId}
-        />
-      )}
-
       <WorkoutsSection
         program={program}
-        workouts={program.workouts}
+        workouts={workoutsWithTime}
         phases={program.phases}
         lastCompletedWorkoutId={lastCompletedWorkoutId}
+        exercises={exerciseList}
       />
     </div>
   );

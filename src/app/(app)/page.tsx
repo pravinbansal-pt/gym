@@ -1,15 +1,18 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
+import { getAppSettings } from "./settings/_actions";
+import { unitLabel } from "@/lib/weight-utils";
+import { formatDistance, formatPace, formatMovingTime, distanceUnitLabel } from "@/lib/cardio-utils";
 import {
   Dumbbell,
   Calendar,
   Flame,
   Weight,
-  Trophy,
   Play,
   Clock,
-  ChevronRight,
   FolderKanban,
+  Route,
+  Footprints,
 } from "lucide-react";
 import {
   Card,
@@ -18,9 +21,9 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { WeeklyVolumeChart } from "./_components/weekly-volume-chart";
+import { Button } from "@/components/ui/button";
+import { DeleteSessionButton } from "./_components/delete-session-button";
 
 function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600);
@@ -37,10 +40,6 @@ function formatDate(date: Date): string {
   });
 }
 
-function calculate1RM(weight: number, reps: number): number {
-  return Math.round(weight * (1 + reps / 30) * 100) / 100;
-}
-
 export default async function DashboardPage() {
   const now = new Date();
   const startOfWeek = new Date(now);
@@ -50,17 +49,17 @@ export default async function DashboardPage() {
   const endOfWeek = new Date(startOfWeek);
   endOfWeek.setDate(startOfWeek.getDate() + 7);
 
-  // Past 7 days for daily volume chart
-  const sevenDaysAgo = new Date(now);
-  sevenDaysAgo.setDate(now.getDate() - 6);
-  sevenDaysAgo.setHours(0, 0, 0, 0);
+  const settings = await getAppSettings();
+  const unit = unitLabel(settings.defaultWeightUnit);
+  const dUnit = settings.defaultDistanceUnit;
 
   const [
     recentSessions,
     weekSessions,
     activeProgram,
-    recentPRs,
-    dailyVolumeSessions,
+    weekCardio,
+    recentCardio,
+    allCardioDates,
   ] = await Promise.all([
     // Recent 5 completed sessions
     db.workoutSession.findMany({
@@ -116,35 +115,23 @@ export default async function DashboardPage() {
       },
     }),
 
-    // Recent 5 personal records
-    db.personalRecord.findMany({
-      include: {
-        exercise: {
-          select: {
-            name: true,
-            primaryMuscleGroup: { select: { name: true } },
-          },
-        },
+    // This week's cardio activities
+    db.cardioActivity.findMany({
+      where: {
+        activityDate: { gte: startOfWeek, lt: endOfWeek },
       },
-      orderBy: { achievedAt: "desc" },
+    }),
+
+    // Recent 5 cardio activities
+    db.cardioActivity.findMany({
+      orderBy: { activityDate: "desc" },
       take: 5,
     }),
 
-    // Sessions for past 7 days volume chart
-    db.workoutSession.findMany({
-      where: {
-        status: "COMPLETED",
-        endedAt: { gte: sevenDaysAgo },
-      },
-      include: {
-        exercises: {
-          include: {
-            sets: {
-              where: { completedAt: { not: null } },
-            },
-          },
-        },
-      },
+    // All cardio dates for streak
+    db.cardioActivity.findMany({
+      select: { activityDate: true },
+      orderBy: { activityDate: "desc" },
     }),
   ]);
 
@@ -167,7 +154,13 @@ export default async function DashboardPage() {
     0
   );
 
-  // Calculate streak
+  // Cardio stats
+  const weekDistanceMeters = weekCardio.reduce(
+    (sum, a) => sum + a.distanceMeters,
+    0
+  );
+
+  // Calculate streak (including cardio)
   let streak = 0;
   const allCompletedDates = await db.workoutSession.findMany({
     where: { status: "COMPLETED", endedAt: { not: null } },
@@ -175,20 +168,21 @@ export default async function DashboardPage() {
     orderBy: { endedAt: "desc" },
   });
 
-  if (allCompletedDates.length > 0) {
-    const uniqueDates = new Set(
-      allCompletedDates.map((s) =>
-        s.endedAt!.toISOString().split("T")[0]
-      )
-    );
+  const uniqueDates = new Set<string>();
+  for (const s of allCompletedDates) {
+    uniqueDates.add(s.endedAt!.toISOString().split("T")[0]);
+  }
+  for (const a of allCardioDates) {
+    uniqueDates.add(a.activityDate.toISOString().split("T")[0]);
+  }
+
+  if (uniqueDates.size > 0) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Check from today backwards
     let checkDate = new Date(today);
     const todayStr = checkDate.toISOString().split("T")[0];
 
-    // If no workout today, start from yesterday
     if (!uniqueDates.has(todayStr)) {
       checkDate.setDate(checkDate.getDate() - 1);
     }
@@ -199,57 +193,55 @@ export default async function DashboardPage() {
     }
   }
 
-  // Build daily volume data for past 7 days
-  const dailyVolumeData: Array<{ day: string; volume: number }> = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(now);
-    d.setDate(now.getDate() - i);
-    const dateStr = d.toISOString().split("T")[0];
-    const dayLabel = d.toLocaleDateString("en-US", { weekday: "short" });
-
-    const dayVolume = dailyVolumeSessions
-      .filter((s) => s.endedAt && s.endedAt.toISOString().split("T")[0] === dateStr)
-      .reduce(
-        (total, session) =>
-          total +
-          session.exercises.reduce(
-            (exTotal, ex) =>
-              exTotal +
-              ex.sets.reduce(
-                (setTotal, set) =>
-                  setTotal + (set.weight ?? 0) * (set.reps ?? 0),
-                0
-              ),
-            0
-          ),
-        0
-      );
-
-    dailyVolumeData.push({ day: dayLabel, volume: Math.round(dayVolume) });
-  }
-
   // Determine next workout in program cycle
   let nextWorkout: {
     id: string;
     name: string;
     exerciseCount: number;
     programId: string;
+    workoutType: string;
+    targetDistanceMeters: number | null;
   } | null = null;
 
   if (activeProgram && activeProgram.workouts.length > 0) {
-    // Find the last completed session for this program
-    const lastProgramSession = await db.workoutSession.findFirst({
-      where: {
-        programId: activeProgram.id,
-        status: "COMPLETED",
-      },
-      select: { programWorkoutId: true },
-      orderBy: { endedAt: "desc" },
-    });
+    // Check both strength sessions and cardio activities for the last completed
+    const [lastProgramSession, lastCardioForProgram] = await Promise.all([
+      db.workoutSession.findFirst({
+        where: {
+          programId: activeProgram.id,
+          status: "COMPLETED",
+        },
+        select: { programWorkoutId: true, endedAt: true },
+        orderBy: { endedAt: "desc" },
+      }),
+      db.cardioActivity.findFirst({
+        where: {
+          programId: activeProgram.id,
+          programWorkoutId: { not: null },
+        },
+        select: { programWorkoutId: true, activityDate: true },
+        orderBy: { activityDate: "desc" },
+      }),
+    ]);
 
-    if (lastProgramSession?.programWorkoutId) {
+    // Find the most recent completed workout (strength or cardio)
+    let lastWorkoutId: string | null = null;
+    if (lastProgramSession && lastCardioForProgram) {
+      const sessionDate = lastProgramSession.endedAt ?? new Date(0);
+      if (lastCardioForProgram.activityDate > sessionDate) {
+        lastWorkoutId = lastCardioForProgram.programWorkoutId;
+      } else {
+        lastWorkoutId = lastProgramSession.programWorkoutId;
+      }
+    } else if (lastProgramSession) {
+      lastWorkoutId = lastProgramSession.programWorkoutId;
+    } else if (lastCardioForProgram) {
+      lastWorkoutId = lastCardioForProgram.programWorkoutId;
+    }
+
+    if (lastWorkoutId) {
       const lastIdx = activeProgram.workouts.findIndex(
-        (w) => w.id === lastProgramSession.programWorkoutId
+        (w) => w.id === lastWorkoutId
       );
       const nextIdx = (lastIdx + 1) % activeProgram.workouts.length;
       const w = activeProgram.workouts[nextIdx];
@@ -258,15 +250,18 @@ export default async function DashboardPage() {
         name: w.name,
         exerciseCount: w.exercises.length,
         programId: activeProgram.id,
+        workoutType: w.workoutType,
+        targetDistanceMeters: w.targetDistanceMeters,
       };
     } else {
-      // No session yet, start with the first workout
       const w = activeProgram.workouts[0];
       nextWorkout = {
         id: w.id,
         name: w.name,
         exerciseCount: w.exercises.length,
         programId: activeProgram.id,
+        workoutType: w.workoutType,
+        targetDistanceMeters: w.targetDistanceMeters,
       };
     }
   }
@@ -291,6 +286,7 @@ export default async function DashboardPage() {
 
     return {
       id: s.id,
+      type: "strength" as const,
       name: s.name ?? s.programWorkout?.name ?? "Workout",
       date: s.endedAt ?? s.startedAt ?? s.createdAt,
       duration: durationSeconds,
@@ -298,6 +294,29 @@ export default async function DashboardPage() {
       totalVolume: Math.round(totalVolume),
     };
   });
+
+  // Format recent cardio for display
+  const formattedCardio = recentCardio.map((a) => ({
+    id: a.id,
+    type: "cardio" as const,
+    name: a.name,
+    date: a.activityDate,
+    distanceMeters: a.distanceMeters,
+    movingTimeSeconds: a.movingTimeSeconds,
+    averagePaceSecsPerKm: a.averagePaceSecsPerKm,
+  }));
+
+  // Merge and sort recent activity
+  type RecentItem =
+    | (typeof formattedSessions)[number]
+    | (typeof formattedCardio)[number];
+
+  const recentActivity: RecentItem[] = [
+    ...formattedSessions,
+    ...formattedCardio,
+  ]
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 5);
 
   const todayFormatted = now.toLocaleDateString("en-US", {
     weekday: "long",
@@ -309,15 +328,9 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* Welcome header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="mt-1 text-muted-foreground">{todayFormatted}</p>
-        </div>
-        <Button size="lg" render={<Link href="/history" />}>
-          <Play className="size-4" />
-          Start Workout
-        </Button>
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+        <p className="mt-1 text-muted-foreground">{todayFormatted}</p>
       </div>
 
       {/* Stats overview */}
@@ -342,14 +355,33 @@ export default async function DashboardPage() {
             <CardDescription>Volume This Week</CardDescription>
             <CardTitle className="text-2xl tabular-nums">
               {totalVolumeThisWeek > 0
-                ? `${Math.round(totalVolumeThisWeek).toLocaleString()} kg`
-                : "0 kg"}
+                ? `${Math.round(totalVolumeThisWeek).toLocaleString()} ${unit}`
+                : `0 ${unit}`}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Weight className="size-3.5" />
               <span>total weight moved</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardDescription>Distance This Week</CardDescription>
+            <CardTitle className="text-2xl tabular-nums">
+              {weekDistanceMeters > 0
+                ? formatDistance(weekDistanceMeters, dUnit)
+                : `0 ${distanceUnitLabel(dUnit)}`}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Route className="size-3.5" />
+              <span>
+                {weekCardio.length} {weekCardio.length === 1 ? "run" : "runs"}
+              </span>
             </div>
           </CardContent>
         </Card>
@@ -368,210 +400,136 @@ export default async function DashboardPage() {
             </div>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader>
-            <CardDescription>Active Program</CardDescription>
-            <CardTitle className="text-2xl truncate">
-              {activeProgram ? activeProgram.name : "None"}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <FolderKanban className="size-3.5" />
-              {activeProgram ? (
-                <Link
-                  href={`/programs/${activeProgram.id}`}
-                  className="underline-offset-4 hover:underline"
-                >
-                  View program
-                </Link>
-              ) : (
-                <Link
-                  href="/programs"
-                  className="underline-offset-4 hover:underline"
-                >
-                  Set up a program
-                </Link>
-              )}
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Left column */}
-        <div className="space-y-6">
-          {/* Next workout card */}
-          {nextWorkout && activeProgram && (
-            <Card>
-              <CardHeader>
-                <CardDescription>Next Workout</CardDescription>
-                <CardTitle>{nextWorkout.name}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-center gap-4 text-sm text-muted-foreground">
+        {/* Next workout card */}
+        {nextWorkout && activeProgram && (
+          <Card>
+            <CardHeader>
+              <CardDescription>Next Workout</CardDescription>
+              <CardTitle className="flex items-center gap-2">
+                {nextWorkout.name}
+                {nextWorkout.workoutType === "CARDIO" && (
+                  <Badge variant="outline" className="text-xs font-normal">
+                    Cardio
+                  </Badge>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                {nextWorkout.workoutType === "CARDIO" ? (
+                  <span className="flex items-center gap-1.5">
+                    <Footprints className="size-3.5" />
+                    {nextWorkout.targetDistanceMeters
+                      ? formatDistance(nextWorkout.targetDistanceMeters, dUnit)
+                      : "Run"}
+                  </span>
+                ) : (
                   <span className="flex items-center gap-1.5">
                     <Dumbbell className="size-3.5" />
                     {nextWorkout.exerciseCount} exercises
                   </span>
-                  <span className="flex items-center gap-1.5">
-                    <FolderKanban className="size-3.5" />
-                    {activeProgram.name}
-                  </span>
-                </div>
-                <Button
-                  render={
-                    <Link
-                      href={`/programs/${nextWorkout.programId}/workouts/${nextWorkout.id}`}
-                    />
-                  }
-                >
-                  <Play className="size-4" />
-                  Start
-                </Button>
-              </CardContent>
-            </Card>
-          )}
+                )}
+                <span className="flex items-center gap-1.5">
+                  <FolderKanban className="size-3.5" />
+                  {activeProgram.name}
+                </span>
+              </div>
+              <Button
+                nativeButton={false}
+                render={
+                  <Link
+                    href={`/programs/${nextWorkout.programId}/workouts/${nextWorkout.id}`}
+                  />
+                }
+              >
+                <Play className="size-4" />
+                {nextWorkout.workoutType === "CARDIO" ? "View Run" : "Start"}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
-          {/* Recent workouts */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Workouts</CardTitle>
-              <CardDescription>Last 5 completed sessions</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {formattedSessions.length === 0 ? (
-                <p className="py-8 text-center text-sm text-muted-foreground">
-                  No completed workouts yet. Start your first workout!
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {formattedSessions.map((session) => (
-                    <Link
-                      key={session.id}
-                      href={`/history`}
-                      className="flex items-center justify-between rounded-lg border p-3 transition-colors hover:bg-muted/50"
-                    >
-                      <div className="min-w-0 flex-1 space-y-1">
+        {/* Recent activity */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Activity</CardTitle>
+            <CardDescription>Last 5 workouts and runs</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {recentActivity.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                No completed workouts yet. Start your first workout!
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {recentActivity.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between rounded-lg border p-3"
+                  >
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex items-center gap-2">
                         <p className="truncate text-sm font-medium">
-                          {session.name}
+                          {item.name}
                         </p>
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <Calendar className="size-3" />
-                            {formatDate(session.date)}
-                          </span>
-                          {session.duration > 0 && (
+                        {item.type === "cardio" && (
+                          <Badge variant="outline" className="text-xs shrink-0">
+                            Run
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="size-3" />
+                          {formatDate(new Date(item.date))}
+                        </span>
+                        {item.type === "strength" && (
+                          <>
+                            {item.duration > 0 && (
+                              <span className="flex items-center gap-1">
+                                <Clock className="size-3" />
+                                {formatDuration(item.duration)}
+                              </span>
+                            )}
+                            <span>
+                              {item.exerciseCount} exercises
+                            </span>
+                            <span>
+                              {item.totalVolume.toLocaleString()} {unit}
+                            </span>
+                          </>
+                        )}
+                        {item.type === "cardio" && (
+                          <>
+                            <span className="flex items-center gap-1">
+                              <Route className="size-3" />
+                              {formatDistance(item.distanceMeters, dUnit)}
+                            </span>
                             <span className="flex items-center gap-1">
                               <Clock className="size-3" />
-                              {formatDuration(session.duration)}
+                              {formatMovingTime(item.movingTimeSeconds)}
                             </span>
-                          )}
-                          <span>
-                            {session.exerciseCount} exercises
-                          </span>
-                          <span>
-                            {session.totalVolume.toLocaleString()} kg
-                          </span>
-                        </div>
-                      </div>
-                      <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Right column */}
-        <div className="space-y-6">
-          {/* Recent PRs */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Recent PRs</CardTitle>
-                  <CardDescription>Latest personal records</CardDescription>
-                </div>
-                <Link href="/records">
-                  <Button variant="ghost" size="sm">
-                    View all
-                    <ChevronRight className="size-3.5" />
-                  </Button>
-                </Link>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {recentPRs.length === 0 ? (
-                <p className="py-8 text-center text-sm text-muted-foreground">
-                  No personal records yet. Complete some sets to start tracking PRs!
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {recentPRs.map((pr) => {
-                    const sevenDaysAgoDate = new Date();
-                    sevenDaysAgoDate.setDate(sevenDaysAgoDate.getDate() - 7);
-                    const isRecent = pr.achievedAt >= sevenDaysAgoDate;
-
-                    return (
-                      <div
-                        key={pr.id}
-                        className="flex items-center gap-3 rounded-lg border p-3"
-                      >
-                        <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600 dark:bg-amber-950 dark:text-amber-400">
-                          <Trophy className="size-4" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <p className="truncate text-sm font-medium">
-                              {pr.exercise.name}
-                            </p>
-                            {isRecent && (
-                              <Badge variant="secondary" className="text-[10px]">
-                                New!
-                              </Badge>
+                            {item.averagePaceSecsPerKm && item.averagePaceSecsPerKm > 0 && (
+                              <span>
+                                {formatPace(item.averagePaceSecsPerKm, dUnit)}
+                              </span>
                             )}
-                          </div>
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <span>
-                              {pr.weight} kg x {pr.reps} reps
-                            </span>
-                            <span className="text-muted-foreground/50">|</span>
-                            <span>
-                              Est. 1RM: {Math.round(pr.estimated1RM)} kg
-                            </span>
-                          </div>
-                        </div>
-                        <span className="shrink-0 text-xs text-muted-foreground">
-                          {formatDate(pr.achievedAt)}
-                        </span>
+                          </>
+                        )}
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Weekly volume chart */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Weekly Volume</CardTitle>
-              <CardDescription>Daily volume over the past 7 days</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {dailyVolumeData.every((d) => d.volume === 0) ? (
-                <p className="py-8 text-center text-sm text-muted-foreground">
-                  No volume data for the past 7 days.
-                </p>
-              ) : (
-                <WeeklyVolumeChart data={dailyVolumeData} />
-              )}
-            </CardContent>
-          </Card>
-        </div>
+                    </div>
+                    {item.type === "strength" && (
+                      <DeleteSessionButton sessionId={item.id} />
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

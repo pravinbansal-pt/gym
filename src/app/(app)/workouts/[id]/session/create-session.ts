@@ -13,7 +13,7 @@ export async function createSession(programWorkoutId: string) {
     where: {
       programWorkoutId,
       createdAt: { gte: todayStart, lte: todayEnd },
-      status: { in: ["PLANNED", "IN_PROGRESS"] },
+      status: { in: ["PLANNED", "IN_PROGRESS", "PAUSED"] },
     },
     select: { id: true },
   });

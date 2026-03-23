@@ -17,6 +17,8 @@ import {
   StickyNote,
   Pin,
   Trash2,
+  Pause,
+  Play,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -36,8 +38,13 @@ import {
   removeSet,
   startSession,
   endSession,
+  pauseSession,
+  resumeSession,
+  deleteSession,
   saveExerciseNote,
 } from "../../_actions";
+import { unitLabel, getWeightIncrements } from "@/lib/weight-utils";
+import type { WeightUnit } from "@/generated/prisma/client";
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -60,6 +67,7 @@ interface ExerciseData {
   orderIndex: number;
   restSeconds: number;
   warmUpPercent: number;
+  weightUnit: WeightUnit;
   sets: SetData[];
   notes: Array<{
     id: string;
@@ -81,9 +89,11 @@ interface ExerciseData {
 interface SessionData {
   id: string;
   name: string;
-  status: "PLANNED" | "IN_PROGRESS" | "COMPLETED";
+  status: "PLANNED" | "IN_PROGRESS" | "PAUSED" | "COMPLETED";
   startedAt: string | null;
   endedAt: string | null;
+  pausedAt: string | null;
+  totalPausedSeconds: number;
   exercises: ExerciseData[];
 }
 
@@ -119,6 +129,10 @@ export function LiveSession({
   const startedAtRef = useRef<Date | null>(
     session.startedAt ? new Date(session.startedAt) : null
   );
+  const totalPausedRef = useRef<number>(session.totalPausedSeconds);
+  const pausedAtRef = useRef<Date | null>(
+    session.pausedAt ? new Date(session.pausedAt) : null
+  );
 
   // Rest timer state
   const [restTimer, setRestTimer] = useState<{
@@ -145,20 +159,33 @@ export function LiveSession({
   // Finish workout dialog
   const [finishDialogOpen, setFinishDialogOpen] = useState(false);
 
+  // Cancel workout dialog
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+
   // ─── Elapsed Timer ──────────────────────────────────────────────
 
   useEffect(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+
     if (session.status === "IN_PROGRESS" && startedAtRef.current) {
-      // Calculate already elapsed time
+      // Calculate active time = total elapsed - total paused
       const now = new Date();
-      const elapsed = Math.floor(
+      const totalElapsed = Math.floor(
         (now.getTime() - startedAtRef.current.getTime()) / 1000
       );
-      setElapsedSeconds(elapsed);
+      const active = totalElapsed - totalPausedRef.current;
+      setElapsedSeconds(Math.max(0, active));
 
       timerRef.current = setInterval(() => {
         setElapsedSeconds((prev) => prev + 1);
       }, 1000);
+    } else if (session.status === "PAUSED" && startedAtRef.current && pausedAtRef.current) {
+      // Show frozen time: time from start to pause, minus previously paused time
+      const totalElapsed = Math.floor(
+        (pausedAtRef.current.getTime() - startedAtRef.current.getTime()) / 1000
+      );
+      const active = totalElapsed - totalPausedRef.current;
+      setElapsedSeconds(Math.max(0, active));
     }
 
     return () => {
@@ -175,7 +202,6 @@ export function LiveSession({
       const now = new Date();
       const diff = now.getTime() - lastInteractionRef.current.getTime();
       if (diff > 30 * 60 * 1000) {
-        // 30 minutes
         handleEndSession(true);
       }
     }, 60_000);
@@ -226,6 +252,47 @@ export function LiveSession({
     }, 1000);
   }, [session.id, session.status]);
 
+  // ─── Pause Session ──────────────────────────────────────────────
+
+  const handlePauseSession = useCallback(async () => {
+    if (session.status !== "IN_PROGRESS") return;
+
+    await pauseSession(session.id);
+    const now = new Date();
+    pausedAtRef.current = now;
+
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (restTimerRef.current) clearInterval(restTimerRef.current);
+
+    setSession((prev) => ({
+      ...prev,
+      status: "PAUSED",
+      pausedAt: now.toISOString(),
+    }));
+
+    setRestTimer({ active: false, remaining: 0, total: 0 });
+    toast.info("Workout paused");
+  }, [session.id, session.status]);
+
+  // ─── Resume Session ────────────────────────────────────────────
+
+  const handleResumeSession = useCallback(async () => {
+    if (session.status !== "PAUSED") return;
+
+    const result = await resumeSession(session.id);
+    totalPausedRef.current = result.totalPausedSeconds;
+    pausedAtRef.current = null;
+
+    setSession((prev) => ({
+      ...prev,
+      status: "IN_PROGRESS",
+      pausedAt: null,
+      totalPausedSeconds: result.totalPausedSeconds,
+    }));
+
+    toast.success("Workout resumed");
+  }, [session.id, session.status]);
+
   // ─── End Session ────────────────────────────────────────────────
 
   const handleEndSession = useCallback(
@@ -257,6 +324,18 @@ export function LiveSession({
     },
     [session.id, session.status, router]
   );
+
+  // ─── Cancel Session ────────────────────────────────────────────
+
+  const handleCancelSession = useCallback(async () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (restTimerRef.current) clearInterval(restTimerRef.current);
+    if (autoEndRef.current) clearInterval(autoEndRef.current);
+
+    await deleteSession(session.id);
+    toast.info("Workout cancelled");
+    router.push("/");
+  }, [session.id, router]);
 
   // ─── Rest Timer (L3) ───────────────────────────────────────────
 
@@ -400,7 +479,7 @@ export function LiveSession({
       }));
 
       if (result.isNewPR) {
-        toast.success(`New Personal Record! Est. 1RM: ${est1RM} kg`, {
+        toast.success(`New Personal Record! Est. 1RM: ${est1RM} ${unitLabel(exercise.weightUnit)}`, {
           duration: 5000,
         });
       }
@@ -557,22 +636,41 @@ export function LiveSession({
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span>{completedSets}/{totalSets} sets</span>
               <span>&middot;</span>
-              <span>{Math.round(totalVolume).toLocaleString()} kg</span>
+              <span>{Math.round(totalVolume).toLocaleString()} {unitLabel(session.exercises[0]?.weightUnit ?? "KG")}</span>
+              {session.status === "PAUSED" && <Badge variant="secondary" className="text-[10px] h-4 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Paused</Badge>}
               {isCompleted && <Badge variant="secondary" className="text-[10px] h-4">Done</Badge>}
             </div>
           </div>
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1 rounded-md bg-muted px-2 py-1 font-mono text-sm sm:text-base tabular-nums">
               <Timer className="size-3.5 text-muted-foreground" />
-              <span className={session.status === "IN_PROGRESS" ? "text-foreground font-semibold" : "text-muted-foreground"}>
+              <span className={session.status === "IN_PROGRESS" ? "text-foreground font-semibold" : session.status === "PAUSED" ? "text-amber-600 dark:text-amber-400 font-semibold animate-pulse" : "text-muted-foreground"}>
                 {formatTime(elapsedSeconds)}
               </span>
             </div>
             {!isCompleted && (
-              <Button variant="default" size="sm" onClick={() => setFinishDialogOpen(true)} className="gap-1 h-8 text-xs sm:text-sm">
-                <Check className="size-3.5" />
-                Finish
-              </Button>
+              <>
+                <Button variant="ghost" size="sm" onClick={() => setCancelDialogOpen(true)} className="gap-1 h-8 text-xs sm:text-sm text-destructive hover:text-destructive">
+                  <X className="size-3.5" />
+                  Cancel
+                </Button>
+                {session.status === "IN_PROGRESS" && (
+                  <Button variant="outline" size="sm" onClick={handlePauseSession} className="gap-1 h-8 text-xs sm:text-sm">
+                    <Pause className="size-3.5" />
+                    Pause
+                  </Button>
+                )}
+                {session.status === "PAUSED" && (
+                  <Button variant="outline" size="sm" onClick={handleResumeSession} className="gap-1 h-8 text-xs sm:text-sm text-green-600 border-green-600 hover:bg-green-50 dark:hover:bg-green-950/30">
+                    <Play className="size-3.5" />
+                    Resume
+                  </Button>
+                )}
+                <Button variant="default" size="sm" onClick={() => setFinishDialogOpen(true)} className="gap-1 h-8 text-xs sm:text-sm">
+                  <Check className="size-3.5" />
+                  Finish
+                </Button>
+              </>
             )}
             {isCompleted && (
               <Button variant="outline" size="sm" onClick={() => router.push("/history")} className="h-8 text-xs">
@@ -642,7 +740,7 @@ export function LiveSession({
             <p>
               You have completed {completedSets} of {totalSets} sets.
             </p>
-            <p>Total volume: {Math.round(totalVolume).toLocaleString()} kg</p>
+            <p>Total volume: {Math.round(totalVolume).toLocaleString()} {unitLabel(session.exercises[0]?.weightUnit ?? "KG")}</p>
             <p>Duration: {formatTime(elapsedSeconds)}</p>
             {completedSets < totalSets && (
               <p className="text-amber-600 dark:text-amber-400">
@@ -650,7 +748,18 @@ export function LiveSession({
               </p>
             )}
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-col sm:flex-row flex-wrap gap-2">
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setFinishDialogOpen(false);
+                setCancelDialogOpen(true);
+              }}
+              className="sm:mr-auto"
+            >
+              <Trash2 className="size-3.5" />
+              Cancel Workout
+            </Button>
             <Button
               variant="outline"
               onClick={() => setFinishDialogOpen(false)}
@@ -659,6 +768,27 @@ export function LiveSession({
             </Button>
             <Button onClick={() => handleEndSession(false)}>
               Finish Workout
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancel Confirmation Dialog */}
+      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel Workout?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This will permanently delete this session and all recorded sets. This cannot be undone.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCancelDialogOpen(false)}>
+              Go Back
+            </Button>
+            <Button variant="destructive" onClick={handleCancelSession}>
+              <Trash2 className="size-3.5" />
+              Delete Session
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -799,6 +929,14 @@ function ExerciseCard({
 
           {/* Sets — no table borders, tight rows */}
           <div>
+            {/* Column headers */}
+            <div className="grid grid-cols-[1.75rem_1fr_1fr_2rem_1.25rem] items-center px-2.5 sm:px-3 py-1 border-b border-border/50">
+              <span />
+              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground text-center">Weight ({unitLabel(exercise.weightUnit)})</span>
+              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground text-center">Reps</span>
+              <span />
+              <span />
+            </div>
             {exercise.sets.map((set, idx) => (
               <div key={set.id}>
                 <SetRow
@@ -810,6 +948,7 @@ function ExerciseCard({
                   onRemove={() => onRemoveSet(set.id)}
                   warmUpSuggestion={getWarmUpWeight(set)}
                   isCompleted={isCompleted}
+                  weightUnit={exercise.weightUnit}
                 />
                 {/* Rest timer inline between sets */}
                 {restTimer?.active && idx === lastCompletedIdx && idx < exercise.sets.length - 1 && (
@@ -832,7 +971,7 @@ function ExerciseCard({
                 .map((s) => (
                   <span key={s.id} className={`inline-flex items-center gap-1 text-[11px] rounded px-1.5 py-0.5 ${s.isNewPR ? "bg-amber-500/20 text-amber-700 dark:text-amber-400 animate-pulse" : "bg-muted text-muted-foreground"}`}>
                     {s.isNewPR && <Trophy className="size-3" />}
-                    1RM: {s.estimated1RM}kg
+                    1RM: {s.estimated1RM} {unitLabel(exercise.weightUnit)}
                     {s.isNewPR && <span className="text-[9px] font-bold bg-amber-600 text-white px-1 rounded">PR</span>}
                   </span>
                 ))}
@@ -867,6 +1006,7 @@ function SetRow({
   onRemove,
   warmUpSuggestion,
   isCompleted: sessionCompleted,
+  weightUnit,
 }: {
   set: SetData;
   index: number;
@@ -876,10 +1016,12 @@ function SetRow({
   onRemove: () => void;
   warmUpSuggestion: number | null;
   isCompleted: boolean;
+  weightUnit: WeightUnit;
 }) {
   const isComplete = !!set.completedAt;
   const isWarmUp = set.setType === "WARM_UP";
   const displayWeight = set.weight ?? warmUpSuggestion ?? undefined;
+  const increments = getWeightIncrements(weightUnit);
 
   const adjustWeight = (delta: number) => {
     const current = set.weight ?? warmUpSuggestion ?? 0;
@@ -902,7 +1044,7 @@ function SetRow({
       {/* Weight — embedded stepper */}
       <div className="flex items-center gap-0">
         {!sessionCompleted && (
-          <button onClick={() => adjustWeight(isWarmUp ? -2.5 : -5)} disabled={isComplete} className="size-8 flex items-center justify-center text-muted-foreground active:bg-muted rounded-l-md disabled:opacity-20 touch-manipulation">
+          <button onClick={() => adjustWeight(isWarmUp ? -increments.warmUp : -increments.working)} disabled={isComplete} className="size-8 flex items-center justify-center text-muted-foreground active:bg-muted rounded-l-md disabled:opacity-20 touch-manipulation">
             <Minus className="size-3.5" />
           </button>
         )}
@@ -916,7 +1058,7 @@ function SetRow({
           disabled={isComplete || sessionCompleted}
         />
         {!sessionCompleted && (
-          <button onClick={() => adjustWeight(isWarmUp ? 2.5 : 5)} disabled={isComplete} className="size-8 flex items-center justify-center text-muted-foreground active:bg-muted rounded-r-md disabled:opacity-20 touch-manipulation">
+          <button onClick={() => adjustWeight(isWarmUp ? increments.warmUp : increments.working)} disabled={isComplete} className="size-8 flex items-center justify-center text-muted-foreground active:bg-muted rounded-r-md disabled:opacity-20 touch-manipulation">
             <Plus className="size-3.5" />
           </button>
         )}
